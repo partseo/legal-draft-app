@@ -28,6 +28,7 @@ function P(text, opts = {}) {
   return new Paragraph({
     alignment: opts.align,
     indent: opts.indent,
+    pageBreakBefore: opts.pageBreak,
     spacing: { line: 360, before: opts.before ?? 0, after: opts.after ?? 120 },
     tabStops: opts.tabStops,
     children: [new TextRun({ text, font: FONT, size: opts.size ?? 24, bold: opts.bold })],
@@ -59,6 +60,27 @@ function partyLine(text) {
 }
 function partyDetail(text) {
   return P(text, { indent: { left: HANG }, after: 60 });
+}
+
+// 별첨: 변호사 확인 필요 사항 (새 페이지, 제출 전 삭제 대상)
+function appendix() {
+  return [
+    P("별첨 — 변호사 확인 필요 사항", {
+      align: AlignmentType.CENTER, size: 28, bold: true, pageBreak: true, after: 120,
+    }),
+    P("(내부 검토용 — 아래 사항을 확인·정리한 뒤 본 별첨 페이지를 삭제하고 제출)", {
+      align: AlignmentType.CENTER, size: 20, after: 360,
+    }),
+    tag("{%p for 항목 in 확인필요목록 %}"),
+    P("{{ loop.index }}. {{ 항목 }}", { indent: { left: 400 } }),
+    tag("{%p endfor %}"),
+    P("공통 점검", { bold: true, before: 360 }),
+    P("□ 본문 파란색 [변호사 확인 필요 …] 표시를 모두 확정하고 표시 문구 제거", { indent: { left: 400 } }),
+    P("□ 빨간색 [출처: …] 핀 전체 삭제 (검증 추적용 — 제출본에는 미기재)", { indent: { left: 400 } }),
+    P("□ 하단 푸터의 \"[초안] — 변호사 검수 전 제출 금지\" 문구 삭제", { indent: { left: 400 } }),
+    P("□ 산출물 폴더의 검증보고(⚠️ 항목) 확인", { indent: { left: 400 } }),
+    P("□ 본 별첨 페이지 삭제", { indent: { left: 400 } }),
+  ];
 }
 
 function buildDoc(children) {
@@ -131,6 +153,7 @@ const sojang = buildDoc([
   P("{{작성일}}", { align: AlignmentType.CENTER, before: 480, after: 240 }),
   P("원고 소송대리인 {{소송대리인}}  (인)", { align: AlignmentType.RIGHT, after: 480 }),
   P("{{제출법원}}  귀중", { size: 32, bold: true, before: 240 }),
+  ...appendix(),
 ]);
 
 // ---- 준비서면 템플릿 -------------------------------------------------------
@@ -172,6 +195,7 @@ const junbi = buildDoc([
   P("{{작성일}}", { align: AlignmentType.CENTER, before: 480, after: 240 }),
   P("{{제출자_말미표시}}  (인)", { align: AlignmentType.RIGHT, after: 480 }),
   P("{{제출법원_표시}}  귀중", { size: 32, bold: true, before: 240 }),
+  ...appendix(),
 ]);
 
 // ---- 저장 -----------------------------------------------------------------

@@ -15,7 +15,7 @@ A4 · 법원 권장 여백(상 45mm / 좌우 20mm / 하 30mm) · 바탕체 12pt 
 | `소장_샘플.docx` | 위 템플릿 + 예시 컨텍스트의 **렌더링 결과물** (완성 모습 확인용) |
 | `준비서면_샘플.docx` | 〃 |
 | `render_서면.py` | 렌더 스크립트 (`pip install docxtpl`) |
-| `make_templates.js` | 템플릿 재생성기 (`npm i -g docx` 후 `NODE_PATH=$(npm root -g) node make_templates.js`) |
+| `make_templates.js` | 템플릿 재생성기 (`npm i -g docx` 후 실행 — bash: `NODE_PATH=$(npm root -g) node make_templates.js` / PowerShell: `$env:NODE_PATH = npm root -g; node make_templates.js`) |
 
 ## 사용법
 

@@ -12,12 +12,22 @@
 - `legalize-kr/kr/{법령명}/` — 법령 원본 (git log = 개정 이력)
 - `precedent-kr/{사건종류}/{법원등급}/` — 판례 원본
 
+두 원본 저장소는 외부 클론(.gitignore 처리)이다. 폴더가 없거나 비어 있으면 묻지 말고
+`git clone https://github.com/legalize-kr/legalize-kr.git` /
+`git clone https://github.com/legalize-kr/precedent-kr.git` 으로 작업 루트에 받는다
+(git log가 데이터이므로 `--depth 1` 금지). README.md "최초 설정" 절 참조.
+
 ## 워크플로우 (스킬 5종)
 
 /case-intake → (검수) → /legal-research → (검수) → /draft-complaint → /verify-citations → 변호사 최종 검수
 상대 답변서 도착 시 같은 사건 폴더에서 → /draft-brief → /verify-citations
 
 각 단계 사이에 변호사가 산출 파일을 직접 검수·수정한 뒤 다음 단계로 진행한다.
+
+절차 마지막(/verify-citations 보고 직후)에는 사건 담당 변호사가 참고할
+시니어 변호사의 송무 진행 조언을 **대화창에만 출력**한다 — 어떤 문서 파일에도
+기록하지 않는다(전략 메모가 산출물·검증 라인에 섞이는 것 방지).
+세부 규칙은 verify-citations 스킬의 "시니어 변호사 송무 조언" 절 참조.
 
 ## 절대 안전수칙 (모든 작업에 적용)
 
@@ -32,8 +42,14 @@
 5. **렌더 전 키 검사** — render_서면.py 실행 전 반드시
    `python "templates/check_projection.py" <소장|준비서면> <context.json>` 으로 OK 확인.
 
+## 회귀 점검 (rules/·스킬 변경 시)
+
+골든 케이스: `cases/2026_김민재 해고 무효`. `rules/` 또는 `.claude/skills/`를
+변경하면 영향받는 단계만 서브에이전트로 골든 케이스에 재실행해 확인한다:
+① 검증보고 PASS/FAIL이 변경 전과 달라지지 않음 ② 사건컨텍스트 멱등(쟁점·
+사실관계 불변) ③ 새 산출 형식이 정상 생성됨. 자동화 스크립트는 두지 않는다.
+
 ## 자주 쓰는 명령
 
-- 렌더: `python "templates/render_서면.py" <템플릿.docx> <context.json> <출력.docx>`
-- 법령 현행성: `git -C legalize-kr log -1 --format=%ad --date=short -- "kr/{법령}/{파일}.md"`
-- 템플릿 재생성(구조 변경 시): `templates`에서 `$env:NODE_PATH = npm root -g; node make_templates.js`
+- 행위시법 버전 조회: `git -C legalize-kr log --format="%h %ad" --date=short -- "kr/{법령}/{파일}.md"` → `git -C legalize-kr show {해시}:"kr/{법령}/{파일}.md"` (판정은 frontmatter 시행일자 — 인용규칙 §7)
+- 렌더·현행성 명령은 각 스킬에, 템플릿 재생성은 `templates/README.md`에 기재.
