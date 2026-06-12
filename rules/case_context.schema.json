@@ -65,7 +65,7 @@
         "properties": {
           "일자": { "type": "string", "description": "YYYY.MM.DD. 형식. 불명이면 'YYYY.MM.경'" },
           "사실": { "type": "string" },
-          "근거": { "type": "string", "description": "입력 파일 출처 또는 증거 표시. 예: '상담메모.md §2 / 갑2'. 빈 값 금지" }
+          "근거": { "type": "string", "description": "입력 파일 출처 또는 증거 표시. 예: 'consultation_memo.md §2 / 갑2'. 빈 값 금지" }
         }
       }
     },
@@ -79,7 +79,7 @@
           "제목": { "type": "string" },
           "우리주장": { "type": "string" },
           "상대주장": { "type": ["string", "null"], "description": "상대 서면 도착 전이면 null" },
-          "법리ref": { "type": ["string", "null"], "description": "리서치 파일 앵커. 예: '리서치/쟁점별_법리.md#쟁점1'" }
+          "법리ref": { "type": ["string", "null"], "description": "리서치 파일 앵커. 예: 'research/legal_analysis.md#쟁점1'" }
         }
       }
     },

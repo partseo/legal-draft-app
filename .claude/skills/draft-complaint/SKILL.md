@@ -7,8 +7,8 @@ description: 소장작성 — 사건컨텍스트와 리서치를 바탕으로 �
 
 ## 전제 확인 (하나라도 없으면 해당 스킬 먼저 하라고 안내 후 중단)
 
-- `사건/{사건폴더명}/사건컨텍스트.json` 존재 + `쟁점[]` 비어 있지 않음 → /case-intake
-- `사건/{사건폴더명}/리서치/쟁점별_법리.md` 존재 → /legal-research
+- `cases/{사건폴더명}/case_context.json` 존재 + `쟁점[]` 비어 있지 않음 → /case-intake
+- `cases/{사건폴더명}/research/legal_analysis.md` 존재 → /legal-research
 
 ## 작성
 
@@ -21,7 +21,7 @@ description: 소장작성 — 사건컨텍스트와 리서치를 바탕으로 �
 2. **청구원인** — 절(번호/제목/문단[]) 배열:
    - 1. 당사자의 지위 → 2. 사실관계(사건컨텍스트.사실관계 시간순, 각 사실 끝에
      호증 표시 "(갑n)") → 3.~ 쟁점별 법적 주장 → 마지막-1. 결론.
-   - 법적 주장 절은 `리서치/쟁점별_법리.md`의 발췌·출처 핀을 그대로 인용해 구성.
+   - 법적 주장 절은 `research/legal_analysis.md`의 발췌·출처 핀을 그대로 인용해 구성.
      **리서치에 없는 조문·판례가 필요해지면 작성을 중단하고 /legal-research
      보강을 안내한다.**
    - 마지막 절: "n. [변호사 확인 필요 사항]" — `사건컨텍스트.확인필요` 전체 목록.
@@ -31,12 +31,12 @@ description: 소장작성 — 사건컨텍스트와 리서치를 바탕으로 �
 
 ## 렌더
 
-1. `사건/{사건폴더명}/산출물/context_소장.json` 작성 — 키 구조는
-   `문서 양식/context_소장_예시.json`과 동일 (스칼라 15개 + 배열 4개).
+1. `cases/{사건폴더명}/output/context_complaint.json` 작성 — 키 구조는
+   `templates/context_complaint_example.json`과 동일 (스칼라 15개 + 배열 4개).
    당사자는 원고[0]·피고[0] 기준(v1 한계).
 2. 필수 키 검사 (실패 시 JSON 수정 후 재시도):
-   `python "문서 양식/check_projection.py" 소장 "사건/{사건폴더명}/산출물/context_소장.json"` → `OK`
+   `python "templates/check_projection.py" 소장 "cases/{사건폴더명}/output/context_complaint.json"` → `OK`
 3. 렌더:
-   `python "문서 양식/render_서면.py" "문서 양식/소장_템플릿_docxtpl.docx" "사건/{사건폴더명}/산출물/context_소장.json" "사건/{사건폴더명}/산출물/소장_초안.docx"`
+   `python "templates/render_document.py" "templates/complaint_template_docxtpl.docx" "cases/{사건폴더명}/output/context_complaint.json" "cases/{사건폴더명}/output/complaint_draft.docx"`
 4. **보고**: 초안 경로, 청구취지 요약, 확인필요 목록, 그리고
    "/verify-citations {사건폴더명} 소장 통과 + 변호사 검수 전 제출 금지" 고지.

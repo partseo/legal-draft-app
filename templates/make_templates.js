@@ -177,6 +177,6 @@ const junbi = buildDoc([
 // ---- 저장 -----------------------------------------------------------------
 
 Promise.all([
-  Packer.toBuffer(sojang).then(b => fs.writeFileSync(__dirname + "/소장_템플릿_docxtpl.docx", b)),
-  Packer.toBuffer(junbi).then(b => fs.writeFileSync(__dirname + "/준비서면_템플릿_docxtpl.docx", b)),
+  Packer.toBuffer(sojang).then(b => fs.writeFileSync(__dirname + "/complaint_template_docxtpl.docx", b)),
+  Packer.toBuffer(junbi).then(b => fs.writeFileSync(__dirname + "/brief_template_docxtpl.docx", b)),
 ]).then(() => console.log("템플릿 2종 생성 완료"));

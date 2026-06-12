@@ -7,9 +7,9 @@ description: 준비서면작성 — 상대방 서면을 쟁점별로 분해·반
 
 ## 전제 확인 (없으면 안내 후 중단)
 
-- `사건컨텍스트.json` + `리서치/쟁점별_법리.md` 존재.
-- `입력/`에 상대방 서면 텍스트(예: 상대방_답변서.md) 존재. 없으면 상대 서면을
-  텍스트로 변환해 `입력/`에 넣어 달라고 안내.
+- `case_context.json` + `research/legal_analysis.md` 존재.
+- `input/`에 상대방 서면 텍스트(예: opponent_answer.md) 존재. 없으면 상대 서면을
+  텍스트로 변환해 `input/`에 넣어 달라고 안내.
 - 사건번호: `사건컨텍스트.사건.사건번호`가 null이면 사용자에게 질문(소 제기 후
   부여된 번호). 답을 받으면 사건컨텍스트에 기록.
 
@@ -33,10 +33,10 @@ description: 준비서면작성 — 상대방 서면을 쟁점별로 분해·반
 
 ## 렌더
 
-1. `사건/{사건폴더명}/산출물/context_준비서면.json` 작성 — 키 구조는
-   `문서 양식/context_준비서면_예시.json`과 동일.
+1. `cases/{사건폴더명}/output/context_brief.json` 작성 — 키 구조는
+   `templates/context_brief_example.json`과 동일.
    입증방법은 이번 서면에서 **새로 내는** 증거만(이미 소장에서 낸 갑호증 제외).
-2. `python "문서 양식/check_projection.py" 준비서면 "사건/{사건폴더명}/산출물/context_준비서면.json"` → `OK`
-3. `python "문서 양식/render_서면.py" "문서 양식/준비서면_템플릿_docxtpl.docx" "사건/{사건폴더명}/산출물/context_준비서면.json" "사건/{사건폴더명}/산출물/준비서면_초안.docx"`
+2. `python "templates/check_projection.py" 준비서면 "cases/{사건폴더명}/output/context_brief.json"` → `OK`
+3. `python "templates/render_document.py" "templates/brief_template_docxtpl.docx" "cases/{사건폴더명}/output/context_brief.json" "cases/{사건폴더명}/output/brief_draft.docx"`
 4. 보고: 초안 경로 + 쟁점별 대응 요약 + "/verify-citations {사건폴더명} 준비서면
    통과 + 변호사 검수 전 제출 금지" 고지.

@@ -8,21 +8,21 @@
 
 | 파일 | 설명 |
 |---|---|
-| `소장_템플릿_docxtpl.docx` | docxtpl(Jinja2) 템플릿 — `{{변수}}` + `{%p for %}` 루프 내장 |
-| `준비서면_템플릿_docxtpl.docx` | 〃 |
-| `context_소장_예시.json` | 가상 동해물류 사건으로 채운 컨텍스트 예시 |
-| `context_준비서면_예시.json` | 〃 |
-| `소장_샘플.docx` | 위 템플릿 + 예시 컨텍스트의 **렌더링 결과물** (완성 모습 확인용) |
-| `준비서면_샘플.docx` | 〃 |
-| `render_서면.py` | 렌더 스크립트 (`pip install docxtpl`) |
+| `complaint_template_docxtpl.docx` | docxtpl(Jinja2) 템플릿 — `{{변수}}` + `{%p for %}` 루프 내장 |
+| `brief_template_docxtpl.docx` | 〃 |
+| `context_complaint_example.json` | 가상 동해물류 사건으로 채운 컨텍스트 예시 |
+| `context_brief_example.json` | 〃 |
+| `complaint_sample.docx` | 위 템플릿 + 예시 컨텍스트의 **렌더링 결과물** (완성 모습 확인용) |
+| `brief_sample.docx` | 〃 |
+| `render_document.py` | 렌더 스크립트 (`pip install docxtpl`) |
 | `make_templates.js` | 템플릿 재생성기 (`npm i -g docx` 후 `NODE_PATH=$(npm root -g) node make_templates.js`) |
 
 ## 사용법
 
 ```bash
 pip install docxtpl
-python3 render_서면.py 소장_템플릿_docxtpl.docx context_소장_예시.json 소장_샘플.docx
-python3 render_서면.py 준비서면_템플릿_docxtpl.docx context_준비서면_예시.json 준비서면_샘플.docx
+python3 render_document.py complaint_template_docxtpl.docx context_complaint_example.json complaint_sample.docx
+python3 render_document.py brief_template_docxtpl.docx context_brief_example.json brief_sample.docx
 ```
 
 ## 템플릿 변수 스키마 (요약)
@@ -37,8 +37,8 @@ python3 render_서면.py 준비서면_템플릿_docxtpl.docx context_준비서�
 
 ## 실습 연계 (AGENT-002 STEP 5-C)
 
-에이전트가 legalize-kr에서 검증한 '관계 법령'·'법리' 섹션(`산출물/소장_관계법령_법리.md`)을
-context JSON의 `청구원인`(소장) 또는 `본문`(준비서면) 배열에 채워 넣고 `render_서면.py`를
+에이전트가 legalize-kr에서 검증한 '관계 법령'·'법리' 섹션(`output/complaint_legal_analysis.md`)을
+context JSON의 `청구원인`(소장) 또는 `본문`(준비서면) 배열에 채워 넣고 `render_document.py`를
 실행하면, **마크다운 초안 → 법원 양식 워드 파일**까지 한 번에 이어진다.
 "에이전트 산출물이 회사 양식의 실제 문서 파일로 떨어진다"는 하네스 효과를 체감하는 단계.
 
