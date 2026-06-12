@@ -3,14 +3,14 @@
 
 사용법:
     pip install docxtpl
-    python render_document.py <템플릿.docx> <context.json> <출력.docx>
+    python render_서면.py <템플릿.docx> <context.json> <출력.docx>
 
 예시:
-    python render_document.py complaint_template_docxtpl.docx context_complaint_example.json complaint_sample.docx
-    python render_document.py brief_template_docxtpl.docx context_brief_example.json brief_sample.docx
+    python render_서면.py 소장_템플릿_docxtpl.docx context_소장_예시.json 소장_샘플.docx
+    python render_서면.py 준비서면_템플릿_docxtpl.docx context_준비서면_예시.json 준비서면_샘플.docx
 
 연계:
-    작성 스킬(draft-complaint/draft-brief)이 research/legal_analysis.md의 검증된 법리를
+    작성 스킬(draft-complaint/draft-brief)이 리서치/쟁점별_법리.md의 검증된 법리를
     context JSON의 청구원인(또는 본문) 배열에 채워 넣은 뒤 이 스크립트를 실행하면
     법원 양식 그대로의 워드 초안이 나온다. 실행 전 check_projection.py로 필수 키를 검사할 것.
 """

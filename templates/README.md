@@ -8,21 +8,21 @@ A4 · 법원 권장 여백(상 45mm / 좌우 20mm / 하 30mm) · 바탕체 12pt 
 
 | 파일 | 설명 |
 |---|---|
-| `complaint_template_docxtpl.docx` | docxtpl(Jinja2) 템플릿 — `{{변수}}` + `{%p for %}` 루프 내장 |
-| `brief_template_docxtpl.docx` | 〃 |
-| `context_complaint_example.json` | 가상 동해물류 사건으로 채운 컨텍스트 예시 |
-| `context_brief_example.json` | 〃 |
-| `complaint_sample.docx` | 위 템플릿 + 예시 컨텍스트의 **렌더링 결과물** (완성 모습 확인용) |
-| `brief_sample.docx` | 〃 |
-| `render_document.py` | 렌더 스크립트 (`pip install docxtpl`) |
+| `소장_템플릿_docxtpl.docx` | docxtpl(Jinja2) 템플릿 — `{{변수}}` + `{%p for %}` 루프 내장 |
+| `준비서면_템플릿_docxtpl.docx` | 〃 |
+| `context_소장_예시.json` | 가상 동해물류 사건으로 채운 컨텍스트 예시 |
+| `context_준비서면_예시.json` | 〃 |
+| `소장_샘플.docx` | 위 템플릿 + 예시 컨텍스트의 **렌더링 결과물** (완성 모습 확인용) |
+| `준비서면_샘플.docx` | 〃 |
+| `render_서면.py` | 렌더 스크립트 (`pip install docxtpl`) |
 | `make_templates.js` | 템플릿 재생성기 (`npm i -g docx` 후 `NODE_PATH=$(npm root -g) node make_templates.js`) |
 
 ## 사용법
 
 ```bash
 pip install docxtpl
-python3 render_document.py complaint_template_docxtpl.docx context_complaint_example.json complaint_sample.docx
-python3 render_document.py brief_template_docxtpl.docx context_brief_example.json brief_sample.docx
+python3 render_서면.py 소장_템플릿_docxtpl.docx context_소장_예시.json 소장_샘플.docx
+python3 render_서면.py 준비서면_템플릿_docxtpl.docx context_준비서면_예시.json 준비서면_샘플.docx
 ```
 
 ## 템플릿 변수 스키마 (요약)
@@ -38,8 +38,8 @@ python3 render_document.py brief_template_docxtpl.docx context_brief_example.jso
 ## 워크플로우 연계
 
 작성 스킬(draft-complaint/draft-brief)이 legalize-kr·precedent-kr에서 검증한 법리
-(`cases/{사건폴더}/research/legal_analysis.md`)를 context JSON의 `청구원인`(소장) 또는
-`본문`(준비서면) 배열에 채워 넣고 `render_document.py`를 실행하면,
+(`cases/{사건폴더}/리서치/쟁점별_법리.md`)를 context JSON의 `청구원인`(소장) 또는
+`본문`(준비서면) 배열에 채워 넣고 `render_서면.py`를 실행하면,
 **사건 컨텍스트 → 법원 양식 워드 초안**까지 한 번에 이어진다.
 
 ## 주의

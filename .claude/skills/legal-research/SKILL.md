@@ -1,6 +1,6 @@
 ---
 name: legal-research
-description: 법리리서치 — 사건컨텍스트의 쟁점별로 legalize-kr 조문과 precedent-kr 판례를 원문 발췌·현행성 확인해 research/legal_analysis.md 생성. 법령 검색, 판례 검색, 법리 정리, 리서치 요청 시 사용.
+description: 법리리서치 — 사건컨텍스트의 쟁점별로 legalize-kr 조문과 precedent-kr 판례를 원문 발췌·현행성 확인해 리서치/쟁점별_법리.md 생성. 법령 검색, 판례 검색, 법리 정리, 리서치 요청 시 사용.
 ---
 
 # /legal-research {사건폴더명}
@@ -10,7 +10,7 @@ description: 법리리서치 — 사건컨텍스트의 쟁점별로 legalize-kr 
 
 ## 절차 (쟁점마다 반복)
 
-1. `cases/{사건폴더명}/case_context.json`의 `쟁점[]`을 읽는다. 쟁점이 비어 있으면
+1. `cases/{사건폴더명}/사건컨텍스트.json`의 `쟁점[]`을 읽는다. 쟁점이 비어 있으면
    /case-intake 먼저 하라고 안내 후 중단.
 2. **조문 탐색.** 쟁점 키워드 2~3조합으로 Grep (`path: legalize-kr/kr`).
    후보 법령 파일을 Read로 열어 해당 조문 원문을 직접 확인한다.
@@ -23,7 +23,7 @@ description: 법리리서치 — 사건컨텍스트의 쟁점별로 legalize-kr 
 5. **발췌.** 조문은 해당 조 전체, 판례는 판시사항/판결요지의 해당 부분을
    그대로 blockquote로 발췌한다.
 
-## 산출: `cases/{사건폴더명}/research/legal_analysis.md`
+## 산출: `cases/{사건폴더명}/리서치/쟁점별_법리.md`
 
 쟁점별 섹션 형식:
 
@@ -45,8 +45,8 @@ description: 법리리서치 — 사건컨텍스트의 쟁점별로 legalize-kr 
 말미 고정 문구(인용규칙 §4): "본 리서치는 legalize-kr·precedent-kr 저장소 수록
 범위 내 검색 결과임. 저장소 외 최신 판례·하급심 판례는 별도 확인 필요."
 
-완료 후 `case_context.json`의 `쟁점[].법리ref`를
-`research/legal_analysis.md#쟁점N` 형식으로 채우고, 사용자에게 쟁점별
+완료 후 `사건컨텍스트.json`의 `쟁점[].법리ref`를
+`리서치/쟁점별_법리.md#쟁점N` 형식으로 채우고, 사용자에게 쟁점별
 조문/판례 건수를 보고하며 "검수 후 /draft-complaint 또는 /draft-brief 진행" 안내.
 
 ## 철칙
