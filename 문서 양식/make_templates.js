@@ -71,7 +71,7 @@ function buildDoc(children) {
           children: [new Paragraph({
             alignment: AlignmentType.CENTER,
             children: [new TextRun({
-              text: "법무법인 화현 · Codex 에이전트 실습용 가상 사건 양식 [초안] — 대외 제출 금지",
+              text: "[초안] — 변호사 검수 전 제출 금지",
               font: FONT, size: 14, color: "999999",
             })],
           })],
