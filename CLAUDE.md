@@ -17,6 +17,14 @@
 `git clone https://github.com/legalize-kr/precedent-kr.git` 으로 작업 루트에 받는다
 (git log가 데이터이므로 `--depth 1` 금지). README.md "최초 설정" 절 참조.
 
+## 듀얼 호스트 (Claude Code + Codex)
+
+이 저장소는 Codex에서도 동작한다 — Codex 진입점은 루트 `AGENTS.md`.
+**`.claude/skills/`가 canonical이고 `.codex/skills/`는 생성된 미러다.**
+미러를 직접 수정하지 말 것. `.claude/skills/`를 변경하면 커밋 전에
+`python scripts/sync_codex_mirror.py` 로 미러를 재생성한다
+(`--check`: 낡았으면 exit 1).
+
 ## 워크플로우 (스킬 5종)
 
 /case-intake → (검수) → /legal-research → (검수) → /draft-complaint → /verify-citations → 변호사 최종 검수

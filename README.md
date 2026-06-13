@@ -1,7 +1,7 @@
 # 송무서면 생성기 — 소장·준비서면 작성 에이전트
 
 > 상담메모를 넣으면, AI가 법령·판례를 찾아 **소장·준비서면 초안(워드 파일)** 을 만들어 주는 작업공간입니다.
-> Claude Code 채팅창에 한 줄만 입력하면 됩니다. 명령어 암기는 필요 없습니다.
+> Claude Code 또는 Codex 채팅창에 한 줄만 입력하면 됩니다. 명령어 암기는 필요 없습니다.
 
 ⚠️ **모든 산출물은 "초안"입니다. 변호사가 직접 검수하기 전에는 절대 법원에 제출하지 마세요.**
 
@@ -145,12 +145,34 @@ git -C precedent-kr pull
 
 ---
 
+## Codex에서도 쓸 수 있습니다
+
+이 저장소는 Claude Code와 **Codex**(OpenAI의 코딩 에이전트 — CLI/cloud/web)
+양쪽에서 동작하도록 구성되어 있습니다.
+
+- **진입점** — Codex는 루트의 [`AGENTS.md`](AGENTS.md)를 읽고 같은 5단계
+  절차와 안전수칙(사실 생성 금지, 인용 전수 검증 등)을 그대로 따릅니다.
+- **쓰는 법은 동일** — Codex 채팅창에 자연어로 요청하면 됩니다.
+  예: `새 사건이야. 의뢰인 홍길동, 임금 미지급. 상담메모는 입력 폴더에 넣어뒀어`
+- **절차 정의 위치** — Claude Code용 `.claude/skills/`가 원본이고,
+  Codex용 `.codex/skills/`는 거기서 자동 생성되는 미러입니다.
+  `.codex/skills/`는 직접 수정하지 마세요.
+- **준비물 동일** — `pip install docxtpl` + 법령·판례 저장소(에이전트가 자동
+  클론). 네트워크가 차단된 Codex 환경에서는 두 저장소를 받을 수 없어
+  리서치·검증 단계가 진행되지 않습니다(환경 설정에서 네트워크 허용 필요).
+
+---
+
 ## 폴더 안내
 
 ```
 .
 ├── README.md                    ← 지금 보는 파일
-├── CLAUDE.md                    ← 에이전트(AI)가 따르는 작업 지침서
+├── CLAUDE.md                    ← 에이전트(AI)가 따르는 작업 지침서 (Claude Code)
+├── AGENTS.md                    ← Codex용 실행 규칙 (CLAUDE.md와 같은 절차·안전수칙)
+├── .claude/skills/              ← 5단계 절차 정의 (원본)
+├── .codex/skills/               ← Codex용 미러 (자동 생성 — 직접 수정 금지)
+├── scripts/                     ← sync_codex_mirror.py (미러 재생성 스크립트)
 ├── cases/                       ← 사건 폴더 모음 (※ 현재 들어있는 건 전부 테스트용 예시)
 │   └── 2026_홍길동_임금미지급/    ← 사건 하나 = 폴더 하나
 │       ├── 입력/                ← 상담메모, 상대 서면 등 원천 자료를 여기에
@@ -236,6 +258,8 @@ git -C legalize-kr show {해시}:"kr/{법령}/{파일}.md"
 
 - `rules/` 또는 `.claude/skills/` 변경 시 골든 케이스(`cases/2026_김민재 해고 무효`)로
   회귀 점검: ① 검증보고 PASS/FAIL 불변 ② 사건컨텍스트 멱등 ③ 새 산출 형식 정상 생성.
+- `.claude/skills/` 변경 시 Codex 미러 재생성: `python scripts/sync_codex_mirror.py`
+  (검사만: `--check` — 낡았으면 exit 1)
 - 템플릿 구조 변경 시 재생성: `templates`에서 `$env:NODE_PATH = npm root -g; node make_templates.js`
 
 </details>
