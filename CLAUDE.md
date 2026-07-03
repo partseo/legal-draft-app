@@ -9,13 +9,9 @@
 - `rules/인용규칙.md` — 조문·판례 인용 표기 + 출처 핀 규칙 (모든 인용에 적용)
 - `rules/사건컨텍스트.schema.json` — canonical 사건컨텍스트 스키마
 - `templates/` — docxtpl 템플릿 2종(소장_템플릿_docxtpl.docx, 준비서면_템플릿_docxtpl.docx), render_서면.py, check_projection.py
-- `legalize-kr/kr/{법령명}/` — 법령 원본 (git log = 개정 이력)
-- `precedent-kr/{사건종류}/{법원등급}/` — 판례 원본
+- `.mcp.json` — korean-law-mcp(법령·판례·행정규칙·자치법규·조약·해석례) 등록
 
-두 원본 저장소는 외부 클론(.gitignore 처리)이다. 폴더가 없거나 비어 있으면 묻지 말고
-`git clone https://github.com/legalize-kr/legalize-kr.git` /
-`git clone https://github.com/legalize-kr/precedent-kr.git` 으로 작업 루트에 받는다
-(git log가 데이터이므로 `--depth 1` 금지). README.md "최초 설정" 절 참조.
+법령·판례 출처는 korean-law-mcp(국가법령정보센터 Open API)다. 구 git 저장소(legalize-kr/precedent-kr) 대조 방식은 2026-07 폐지했다.
 
 ## 듀얼 호스트 (Claude Code + Codex)
 
@@ -59,5 +55,5 @@
 
 ## 자주 쓰는 명령
 
-- 행위시법 버전 조회: `git -C legalize-kr log --format="%h %ad" --date=short -- "kr/{법령}/{파일}.md"` → `git -C legalize-kr show {해시}:"kr/{법령}/{파일}.md"` (판정은 frontmatter 시행일자 — 인용규칙 §7)
+- 행위시법: 인용규칙 §7(`applicable_law`).
 - 렌더·현행성 명령은 각 스킬에, 템플릿 재생성은 `templates/README.md`에 기재.

@@ -17,7 +17,7 @@
 이 도구가 일반 ChatGPT식 사용과 다른 점:
 
 - **사실을 지어내지 않습니다** — 입력 자료에 없는 날짜·금액·사실은 쓰지 않고, 모르는 값은 `[변호사 확인 필요]`로 표시합니다.
-- **인용을 지어내지 않습니다** — 법령·판례는 컴퓨터에 내려받은 **원본 저장소에 실제로 존재하는 원문**만 인용하고, 마지막에 전수 대조 검증을 통과해야 합니다.
+- **인용을 지어내지 않습니다** — 법령·판례는 국가법령정보센터(korean-law-mcp)에서 **실제로 조회되는 원문**만 인용하고, 마지막에 전수 대조 검증을 통과해야 합니다.
 - **결과물이 진짜 워드 파일입니다** — 법원 서면 양식이 잡힌 `.docx`로 나와서 바로 열어 고칠 수 있습니다.
 
 ---
@@ -40,7 +40,6 @@ cd <저장소명>
 폴더(압축파일)째 전달받았다면 원하는 위치에 풀어두기만 하면 됩니다.
 
 > `git`이 없다고 나오면 [git-scm.com](https://git-scm.com/)에서 Git을 먼저 설치하세요.
-> 4단계의 법령·판례 내려받기에 Git이 필요하므로, 폴더째 받은 경우에도 설치해 두세요.
 
 ### 3단계. Python 준비물 설치
 
@@ -50,27 +49,32 @@ cd <저장소명>
 pip install docxtpl
 ```
 
-### 4단계. 법령·판례 저장소 — **아무것도 안 해도 됩니다**
+### 4단계. 법령·판례 조회 도구(korean-law-mcp) 설정
 
-이 도구는 법령 원문(`legalize-kr/`)과 판례 원문(`precedent-kr/`)을 컴퓨터에 내려받아 놓고
-그 안에 실제로 있는 내용만 인용합니다. 용량이 커서 이 저장소에는 포함되어 있지 않은데,
-**폴더가 없으면 에이전트가 첫 작업 때 알아서 내려받습니다.** 설치 과정에서 여러분이
-할 일은 없습니다.
+이 도구는 법령·판례 원문을 **korean-law-mcp**(국가법령정보센터 Open API를 감싼 MCP
+서버)로 그때그때 조회해서, 실제로 존재하는 원문만 인용합니다. 최초 1회만 설정하면 됩니다.
 
-직접 받아두고 싶거나 최신 법령으로 갱신하고 싶을 때만 (또는 에이전트에게 "법령 저장소 최신화해줘"라고 말해도 됩니다):
+1. **설치** (Node 18 이상 필요):
 
-```bash
-# 처음 받기 (작업 폴더 안에서)
-git clone https://github.com/legalize-kr/legalize-kr.git
-git clone https://github.com/legalize-kr/precedent-kr.git
+   ```bash
+   npm install -g korean-law-mcp
+   korean-law-mcp --version
+   ```
 
-# 이미 있으면 최신화
-git -C legalize-kr pull
-git -C precedent-kr pull
-```
+2. **API 키 발급** — [open.law.go.kr](https://open.law.go.kr)에서 무료로 발급받습니다.
 
-> 두 저장소는 **수정 이력 자체가 데이터**입니다(과거 시점의 법령 버전을 이력에서 꺼내 씁니다).
-> 그래서 "일부만 받기"(`--depth 1` 같은 옵션) 없이 통째로 받습니다 — 에이전트도 이 규칙을 따릅니다.
+3. **키 등록** — 발급받은 키를 `LAW_OC` 환경변수로 설정하거나, 작업 폴더 루트에
+   `.env` 파일을 만들어 아래처럼 적어둡니다(이 파일은 `.gitignore`에 이미 등록되어 있어
+   커밋되지 않습니다):
+
+   ```
+   LAW_OC=발급받은키
+   ```
+
+   > 키는 어떤 경우에도 커밋하지 마세요.
+
+4. **서버 등록 확인** — MCP 서버 등록은 이 저장소의 `.mcp.json`에 이미 되어 있습니다.
+   Claude Code(또는 Codex)를 다시 시작하면 `korean-law` MCP 도구가 자동으로 로드됩니다.
 
 ---
 
@@ -157,9 +161,9 @@ git -C precedent-kr pull
 - **절차 정의 위치** — Claude Code용 `.claude/skills/`가 원본이고,
   Codex용 `.codex/skills/`는 거기서 자동 생성되는 미러입니다.
   `.codex/skills/`는 직접 수정하지 마세요.
-- **준비물 동일** — `pip install docxtpl` + 법령·판례 저장소(에이전트가 자동
-  클론). 네트워크가 차단된 Codex 환경에서는 두 저장소를 받을 수 없어
-  리서치·검증 단계가 진행되지 않습니다(환경 설정에서 네트워크 허용 필요).
+- **준비물 동일** — `pip install docxtpl` + korean-law-mcp(`LAW_OC` 키 설정,
+  4단계 참조). 네트워크가 차단된 Codex 환경에서는 국가법령정보센터 API를 호출할
+  수 없어 리서치·검증 단계가 진행되지 않습니다(환경 설정에서 네트워크 허용 필요).
 
 ---
 
@@ -170,15 +174,14 @@ git -C precedent-kr pull
 ├── README.md                    ← 지금 보는 파일
 ├── CLAUDE.md                    ← 에이전트(AI)가 따르는 작업 지침서 (Claude Code)
 ├── AGENTS.md                    ← Codex용 실행 규칙 (CLAUDE.md와 같은 절차·안전수칙)
+├── .mcp.json                    ← korean-law-mcp(법령·판례 조회) 서버 등록
 ├── .claude/skills/              ← 5단계 절차 정의 (원본)
 ├── .codex/skills/               ← Codex용 미러 (자동 생성 — 직접 수정 금지)
 ├── scripts/                     ← sync_codex_mirror.py (미러 재생성 스크립트)
 ├── cases/                       ← 사건 폴더 모음 (공개본에는 사건 파일 미포함)
 │   └── README.md                ← 실제 사건 파일은 로컬에서만 생성·보관
 ├── rules/                       ← 인용 표기법, 요건사실, 절차비용 등 작성 규칙
-├── templates/                   ← 워드 서식 템플릿과 변환 스크립트
-├── legalize-kr/                 ← 법령 원문 저장소 (에이전트가 자동으로 내려받음)
-└── precedent-kr/                ← 판례 원문 저장소 (에이전트가 자동으로 내려받음)
+└── templates/                   ← 워드 서식 템플릿과 변환 스크립트
 ```
 
 ### ⚠️ 공개 저장소의 `cases/`에는 사건 파일을 넣지 않습니다
@@ -213,7 +216,7 @@ A. 아니요. "새 사건 등록해줘", "소장 써줘"처럼 자연어로 말�
 A. **안 됩니다.** 모든 산출물은 초안입니다. 검증보고가 전부 ✅여도, 법리 판단과 전략은 변호사 몫입니다. 검증은 "인용이 원문과 일치한다"는 것만 보증합니다.
 
 **Q. 법령이 개정되면 어떻게 하나요?**
-A. 에이전트에게 "법령 저장소 최신화해줘"라고 하면 됩니다. 리서치 단계에서 인용하는 법령이 현행인지(언제 개정됐는지)도 자동으로 확인합니다.
+A. 별도로 할 일이 없습니다. korean-law-mcp가 국가법령정보센터를 그때그때 조회하므로 항상 최신 법령을 봅니다. 리서치 단계에서 인용하는 법령이 현행인지(언제 개정됐는지)도 자동으로 확인합니다.
 
 **Q. 사건 폴더 이름은 마음대로 지어도 되나요?**
 A. `연도_의뢰인_사건요지` 형식(예: `2026_홍길동_임금미지급` 또는 `2026_홍길동 임금 미지급` — 공백도 가능)을 따라주세요. `/case-intake`가 자동으로 이 형식으로 만들어 줍니다.
@@ -236,12 +239,8 @@ A. 대부분 `docxtpl` 미설치가 원인입니다. `pip install docxtpl`을 �
 python "templates/check_projection.py" 소장 cases/.../산출물/context_소장.json
 python "templates/render_서면.py" "templates/소장_템플릿_docxtpl.docx" context.json 출력.docx
 
-# 법령 현행성 확인 (마지막 개정 반영일)
-git -C legalize-kr log -1 --format=%ad --date=short -- "kr/{법령}/{파일}.md"
-
-# 행위시법 버전 조회 (판정 기준은 frontmatter 시행일자 — rules/인용규칙.md §7)
-git -C legalize-kr log --format="%h %ad" --date=short -- "kr/{법령}/{파일}.md"
-git -C legalize-kr show {해시}:"kr/{법령}/{파일}.md"
+# 법령 현행성·행위시법 조회는 korean-law-mcp 도구로 한다
+# (search_law로 현행 MST, applicable_law로 기준일 시행 버전 — rules/인용규칙.md §7)
 ```
 
 - 내부 개발본에서 `rules/` 또는 `.claude/skills/` 변경 시 골든 케이스로 회귀 점검:

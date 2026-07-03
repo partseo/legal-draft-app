@@ -1,5 +1,3 @@
-legalize-kr/
-precedent-kr/
 __pycache__/
 *.pyc
 .env
