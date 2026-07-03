@@ -2,6 +2,7 @@
 
 작성: 2026-07-03 · 대상: 새 세션(fresh agent)
 프로젝트 루트: `C:\Users\byung\WorkOS\AI Work\.side-projects\litigation-writer`
+이 문서 위치(저장소에 커밋됨): `docs/superpowers/handoffs/2026-07-03-korean-law-mcp-리뷰-handoff.md`
 
 ## 다음 세션의 목표 (사용자 지시)
 
@@ -20,11 +21,11 @@
 - **실행 로그(요약 정본)**: `docs/superpowers/execution/2026-07-03-korean-law-mcp-실행로그.md`
 - **MCP 도구 인터페이스 정본**: `docs/superpowers/notes/2026-07-03-mcp-field-map.md`
 - 프로젝트 SSOT: `CLAUDE.md`, 듀얼호스트 규칙: `AGENTS.md`, 인용 규칙: `rules/인용규칙.md`
-- git 히스토리: 브랜치 `feat/korean-law-mcp`가 `master`에 fast-forward 머지됨(17커밋, HEAD `6c898b8`). `git log --oneline` 로 단계별 커밋 확인.
+- git 히스토리: 브랜치 `feat/korean-law-mcp`가 `master`에 fast-forward 머지됨. 전환 본체는 `6c898b8`까지(17커밋); 이후 이 핸드오프 등 문서 커밋이 master에 추가됨. 최신 상태는 `git log --oneline` 로 확인.
 
 ## 리포지토리 현재 상태
 
-- `master` = 전환 완료본(HEAD `6c898b8`). **원격 미설정, push 안 됨.** GitHub(`byungjunjang/litigation-writer`, public)의 `main`은 아직 단일 "Initial public release" 커밋 상태 — 로컬 `master`와 히스토리 무관.
+- `master` = 전환 완료본(전환 본체 `6c898b8`, 이후 문서 커밋 추가). **원격 미설정, push 안 됨.** GitHub(`byungjunjang/litigation-writer`, public)의 `main`은 아직 단일 "Initial public release" 커밋 상태 — 로컬 `master`와 히스토리 무관.
 - 로컬 `legalize-kr/`·`precedent-kr/` 클론은 **삭제됨**(전환으로 불필요).
 - MCP: `.mcp.json`에 `korean-law`(stdio, `command: korean-law-mcp`) 등록. Claude Code 세션에서 `mcp__korean-law__*` 9개 도구 사용 가능(재시작 후 로드됨).
 - **API 키(LAW_OC): `.env`(gitignore)와 사용자 환경변수에만 존재. 값은 이 문서에 기재하지 않음(REDACTED).** 실 OC 값이 과거 커밋에 노출됐던 것은 `git filter-branch`로 전 히스토리에서 스크럽 완료(검증: `git log -S <oc> --all` = 0).
