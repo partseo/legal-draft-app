@@ -6,3 +6,6 @@ Task 4: complete (commits be02456..1fc0587, review clean)
 Task 5: complete (commits 1fc0587..a20a4b6, review clean)
 Task 6: complete (commits a20a4b6..0f4b6cc, review clean)
 Task 7: complete (골든 사본 회귀 — 소장 PASS ❌0/⚠️1, 준비서면 PASS ❌0/⚠️1, 양쪽 1차 PASS 무루프. ⚠️는 2023도188 citator prefix 한계 플래그=가드 정상작동. 멱등·새형식 3종 확인)
+Task 8: complete (commits 6f67d3c..c974e3b, review clean; push는 최종 단계 사용자 승인 대기)
+전 태스크 완료 — 최종 whole-branch 리뷰 단계
+최종 whole-branch 리뷰: Ready to merge Yes (Minor 2 후속: 3분법 헤더-② 긴장 정리 / §0 'C1' 출처 병기)
