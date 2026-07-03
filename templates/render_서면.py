@@ -17,7 +17,7 @@
 검토 표시 후처리:
     렌더 직후 본문을 훑어 변호사 검토 지점을 색으로 표시한다.
     - [변호사 확인 필요…]  → 파란색 (수정·확정해야 할 값)
-    - [출처: …]            → 빨간색 (출처 핀 — 최종 제출본에서 변호사가 제거)
+    - [출처: …], [행위시 확인: …] → 빨간색 (핀 블록 — 최종 제출본에서 변호사가 제거)
 """
 import copy
 import json
@@ -31,7 +31,7 @@ from docxtpl import DocxTemplate
 BLUE = RGBColor(0x00, 0x00, 0xFF)   # [변호사 확인 필요…]
 RED = RGBColor(0xFF, 0x00, 0x00)    # [출처: …]
 
-MARK_RE = re.compile(r"(\[변호사 확인 필요[^\]]*\]|\[출처:[^\]]*\])")
+MARK_RE = re.compile(r"(\[변호사 확인 필요[^\]]*\]|\[출처:[^\]]*\]|\[행위시 확인[^\]]*\])")
 
 
 def _set_run_text(r_element, text: str) -> None:
@@ -60,6 +60,8 @@ def _colorize_paragraph(paragraph) -> None:
             if part.startswith("[변호사 확인 필요"):
                 new_run.font.color.rgb = BLUE
             elif part.startswith("[출처:"):
+                new_run.font.color.rgb = RED
+            elif part.startswith("[행위시 확인"):
                 new_run.font.color.rgb = RED
             anchor.addnext(new_r)
             anchor = new_r
