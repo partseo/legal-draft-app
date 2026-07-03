@@ -37,7 +37,7 @@ python3 render_서면.py 준비서면_템플릿_docxtpl.docx context_준비서�
 
 ## 워크플로우 연계
 
-작성 스킬(draft-complaint/draft-brief)이 legalize-kr·precedent-kr에서 검증한 법리
+작성 스킬(draft-complaint/draft-brief)이 korean-law-mcp로 검증한 법리
 (`cases/{사건폴더}/리서치/쟁점별_법리.md`)를 context JSON의 `청구원인`(소장) 또는
 `본문`(준비서면) 배열에 채워 넣고 `render_서면.py`를 실행하면,
 **사건 컨텍스트 → 법원 양식 워드 초안**까지 한 번에 이어진다.
