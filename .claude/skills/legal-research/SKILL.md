@@ -25,21 +25,26 @@ description: 법리리서치 — 사건컨텍스트의 쟁점별로 korean-law-m
    (검색 규칙: 인용규칙 §6)
 3. **현행성·행위시 확인.** `get_law_text` 반환 상태 라벨([현행]/[연혁])을
    핀에 기록한다. 행위시 조회 시점(수록본 시행일자 미래 / 기준일 이후 개정)에
-   해당하면 인용규칙 §7(applicable_law)을 수행하고 결과를 기재한다.
-4. **판례 탐색.** `search_precedents`로 쟁점 키워드 검색(인용규칙 §6),
-   `get_precedent_text`로 판시사항·판결요지를 직접 읽어 쟁점 적합성을 판단한다.
-   민사 외 사건종류(일반행정 등)는 `search_decisions`(18개 도메인 통합)로
-   추가 검색한다. 키워드만 겹치는 판례는 버린다. 대법원 판례 우선.
-4-b. **도메인 적응(쟁점 성격이 맞을 때만).**
-   - 세무·조세 → 해석례(국세청, `search_decisions --domain nts`)·조세심판례
-     (`search_tax_tribunal_decisions`)
-   - 인허가·행정처분 → 행정규칙(도메인별 `search_*_decisions`)
-   - 지방자치·조례 → 자치법규(`chain_ordinance_compare`)
-   - 국제거래·외국 요소 → 조약(도메인별 `search_*_decisions`)
+   해당하면 인용규칙 §7(`legal_analysis`(`mode='applicable_law'`))을 수행하고
+   결과를 기재한다.
+4. **판례 탐색.** `search_decisions`(`domain='precedent'`)로 쟁점 키워드
+   검색(인용규칙 §6), `get_decision_text`(`domain='precedent'`)로 판시사항·
+   판결요지를 직접 읽어 쟁점 적합성을 판단한다. 민사 외 사건종류(일반행정 등)는
+   `search_decisions`(다른 `domain` 값)로 추가 검색한다. 키워드만 겹치는
+   판례는 버린다. 대법원 판례 우선.
+4-b. **도메인 적응(쟁점 성격이 맞을 때만).** 전부 `search_decisions`(`domain='X'`)
+   /`get_decision_text`(`domain='X'`) 사용 — domain enum은 인용규칙 §6 참조.
+   - 세무·조세 → 국세청 해석례(`domain='nts'`)·조세심판례(`domain='tax_tribunal'`)
+   - 인허가·행정처분 → 행정심판(`domain='admin_appeal'`)
+   - 노동(해고·부당노동행위) → 노동위(`domain='nlrc'`)
+   - 지방자치·조례 → 자치법규 전용 도메인 없음. `search_law` 계열 또는
+     `execute_tool` 프록시로 비교한다.
+   - 국제거래·외국 요소 → 조약(`domain='treaty'`)
    해당 없으면 조회하지 않는다(토큰 절약). 조회분도 §2 핀·발췌 규칙 동일 적용.
-5. **판례 생사 확인.** 선정 판례마다 인용규칙 §5(cite_check)를 수행하고
-   결과를 생사확인 라인(형식: 인용규칙 §2)으로 기재한다. 변경·폐기 시 후속
-   판례로 교체, 불명확하면 ⚠️ 병기.
+5. **판례 생사 확인.** 선정 판례마다 인용규칙
+   §5(`legal_analysis`(`mode='cite_check'`))를 수행하고 결과를 생사확인
+   라인(형식: 인용규칙 §2)으로 기재한다. 변경·폐기 시 후속 판례로 교체,
+   불명확하면 ⚠️ 병기.
 6. **발췌.** 조문은 해당 조 전체, 판례는 판시사항/판결요지의 해당 부분을
    그대로 blockquote로 발췌한다.
 7. **예상 항변 분석.** 쟁점·청구유형별 예상 항변을 도출한다 — ① `rules/요건사실.md`의
