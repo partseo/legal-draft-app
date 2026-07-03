@@ -54,6 +54,9 @@ SKILL.md는 Claude Code 도구명으로 쓰여 있다. Codex에서는 다음으�
 
 - verify-citations 프롬프트의 작업 디렉토리 절대경로는 **현재 체크아웃된
   저장소 루트로 치환**해 사용한다.
+- SKILL.md의 `search_law`/`get_law_text`/`search_decisions`/`get_decision_text`/
+  `legal_analysis` 등 **korean-law MCP 도구는 Codex에서도 그대로 호출**한다
+  (Codex는 MCP 네이티브 지원). 별도 치환 불필요 — 아래 "환경 준비"의 MCP 등록 필요.
 - 모든 파일은 UTF-8로 읽고 쓴다(한국어 파일명·내용).
 
 ## 인용 검증의 독립성 (verify-citations)
@@ -64,9 +67,9 @@ Claude Code에서는 새 컨텍스트의 서브에이전트가 검증한다. Cod
 1. 가능하면 **새 세션/새 대화**에서 verify-citations의 서브에이전트 프롬프트를
    그대로 실행하는 것이 최선이다.
 2. 같은 세션에서 수행해야 한다면: **작성 시 사용한 어떤 기억·요약도 근거로
-   삼지 말고**, 모든 인용을 디스크의 원본 파일(legalize-kr, precedent-kr,
-   리서치, 입력 자료)에서 처음부터 다시 읽어 대조한다. 리서치 파일의
-   `[생사확인: …]`·`[행위시 확인: …]` 라인도 신뢰하지 않고 재수행한다.
+   삼지 말고**, 모든 인용을 korean-law-mcp로 처음부터 다시 조회해 리서치 파일의
+   동결 발췌(및 입력 자료)와 대조한다. 리서치 파일의
+   `[cite_check: …]`·`[행위시 확인: …]` 라인도 신뢰하지 않고 재수행한다.
 3. ❌가 하나라도 있으면 해당 서면은 **"제출 금지"** 상태다. 수정 후 재검증.
 
 ## 절대 안전수칙 (CLAUDE.md 미러 — 협상 불가)
@@ -83,18 +86,19 @@ Claude Code에서는 새 컨텍스트의 서브에이전트가 검증한다. Cod
    `OK` 확인. 실패 시 JSON을 고치고 재시도 — 검사를 건너뛰고 렌더하지 않는다.
 
 웹 검색으로 법령·판례를 가져와 인용하는 것도 금지다. 인용 가능한 원천은
-로컬 저장소(legalize-kr, precedent-kr) → 리서치 발췌 경로뿐이다.
+korean-law-mcp(국가법령정보센터) → 리서치 발췌 경로뿐이다.
 
 ## 환경 준비 (최초 1회)
 
 - `pip install docxtpl` (렌더에 필요. 실패 환경이면 docx 렌더 단계에서 HALT하고
   보고 — 텍스트로 대충 만들어 docx인 척 하지 않는다.)
-- `legalize-kr/`·`precedent-kr/` 폴더가 없거나 비어 있으면 묻지 말고:
-  `git clone https://github.com/legalize-kr/legalize-kr.git` /
-  `git clone https://github.com/legalize-kr/precedent-kr.git` (작업 루트에서).
-  **`--depth 1` 금지** — git log 자체가 데이터다(행위시법 버전 조회에 사용).
-- 네트워크가 차단된 Codex 환경에서 두 저장소를 받을 수 없으면 리서치·검증
-  단계는 진행 불가다. HALT하고 사유를 보고한다 — 기억으로 대체하지 않는다.
+- **korean-law-mcp 연결.** 법령·판례 출처는 korean-law-mcp(국가법령정보센터
+  Open API)다. `npm install -g korean-law-mcp` 후 Codex MCP 설정에
+  `korean-law` 서버(`command = "korean-law-mcp"`)를 등록하고, 무료 API 키를
+  `open.law.go.kr`에서 발급받아 `LAW_OC` 환경변수(또는 저장소 루트 `.env`)로
+  주입한다. **키는 커밋하지 않는다.**
+- MCP가 연결되지 않았거나 API 키가 없으면 리서치·검증 단계는 진행 불가다.
+  HALT하고 사유를 보고한다 — 기억·웹검색으로 대체하지 않는다.
 
 ## 시니어 변호사 송무 조언 (대화창 전용)
 
