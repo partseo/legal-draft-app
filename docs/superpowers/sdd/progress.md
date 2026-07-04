@@ -9,3 +9,10 @@ Task 7: complete (골든 사본 회귀 — 소장 PASS ❌0/⚠️1, 준비서�
 Task 8: complete (commits 6f67d3c..c974e3b, review clean; push는 최종 단계 사용자 승인 대기)
 전 태스크 완료 — 최종 whole-branch 리뷰 단계
 최종 whole-branch 리뷰: Ready to merge Yes (Minor 2 후속: 3분법 헤더-② 긴장 정리 / §0 'C1' 출처 병기)
+
+# P2 후속개선 SDD 진행 레저 (플랜: docs/superpowers/plans/2026-07-04-P2-후속개선.md, 브랜치 feat/p2-quality, 시작 base 0248b21)
+Task 1: complete (commits 0248b21..6d7b455, review clean)
+Task 2: complete (commits 6d7b455..0411f90, fix 1회 후 review clean)
+Task 3: complete (commits 0411f90..d0c18b7, review clean)
+Task 4: complete (commits d0c18b7..7aead01, review clean)
+Task 5: complete (골든 사본 회귀 — intake 멱등 PASS 무변경·배경사실 기등재, research 커버리지 전항목+키워드변형 3회 기록+소촉법 한계 준수, 소장 1차 PASS 무루프 ❌0/⚠️0(청구취지 확정이율·당사자지위 traceable), 준비서면 PASS ❌0/⚠️7(부기이관누락 6=회귀 아티팩트·가드 정상, 증거표시 대응 1=구판 시드))
