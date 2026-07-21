@@ -14,6 +14,7 @@
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.7",
     "korean-law-mcp": "4.4.4",
+    "lucide-react": "^1.25.0",
     "mcp-handler": "^1.1.0",
     "next": "15.5.20",
     "react": "19.1.0",

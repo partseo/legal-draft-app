@@ -1,26 +1,37 @@
 @import "tailwindcss";
 
+/* front-design.pen 디자인 토큰 (2026-07-21) */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --app-primary: #1e3a8a;
+  --app-primary-fg: #ffffff;
+  --app-primary-tint: #eef2ff;
+  --app-page: #f7f7f8;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --font-sans: var(--font-noto-sans-kr), "Noto Sans KR", sans-serif;
+  --font-mono: var(--font-geist-mono), monospace;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-app-primary: var(--app-primary);
+  --color-app-primary-fg: var(--app-primary-fg);
+  --color-app-tint: var(--app-primary-tint);
+  --color-app-page: var(--app-page);
+
+  /* 상태 토큰: 대기/실행중/응답·검수(action)/제출금지(block)/완료(done) */
+  --color-st-wait: #52525b;
+  --color-st-wait-bg: #f4f4f5;
+  --color-st-run: #2563eb;
+  --color-st-run-bg: #eff6ff;
+  --color-st-action: #ea580c;
+  --color-st-action-bg: #fff7ed;
+  --color-st-block: #dc2626;
+  --color-st-block-bg: #fef2f2;
+  --color-st-done: #16a34a;
+  --color-st-done-bg: #f0fdf4;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--app-page);
+  color: #0a0a0a;
+  font-family: var(--font-noto-sans-kr), "Noto Sans KR", sans-serif;
 }
