@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  serverExternalPackages: ["korean-law-mcp", "pdfjs-dist", "kordoc", "@xmldom/xmldom"],
 };
 
 export default nextConfig;
