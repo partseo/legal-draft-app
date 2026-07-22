@@ -7,6 +7,8 @@ const REQUIRED = {
   NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
   NEXT_PUBLIC_SUPABASE_ANON_KEY: "anon-key",
   SUPABASE_SERVICE_ROLE_KEY: "service-key",
+  ANTHROPIC_API_KEY: "sk-ant-test",
+  APP_PUBLIC_URL: "https://example.vercel.app",
 };
 
 describe("getEnv", () => {
@@ -41,5 +43,20 @@ describe("getEnv", () => {
   it("LAW_OC 누락 시 던진다", () => {
     delete process.env.LAW_OC;
     expect(() => getEnv()).toThrow();
+  });
+
+  it("ANTHROPIC_API_KEY 누락 시 던진다", () => {
+    delete process.env.ANTHROPIC_API_KEY;
+    expect(() => getEnv()).toThrow();
+  });
+
+  it("APP_PUBLIC_URL 끝 슬래시는 제거된다", () => {
+    process.env.APP_PUBLIC_URL = "https://example.vercel.app/";
+    expect(getEnv().APP_PUBLIC_URL).toBe("https://example.vercel.app");
+  });
+
+  it("ANTHROPIC_AGENT_MODEL 기본값은 claude-sonnet-5", () => {
+    delete process.env.ANTHROPIC_AGENT_MODEL;
+    expect(getEnv().ANTHROPIC_AGENT_MODEL).toBe("claude-sonnet-5");
   });
 });
