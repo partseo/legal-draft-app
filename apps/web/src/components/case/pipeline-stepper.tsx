@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Check, ChevronDown, ChevronRight, Lock, Loader2, Play, X, CircleAlert } from "lucide-react";
 
 export type StepState = "runnable" | "locked" | "running" | "done" | "action" | "fail";
@@ -43,10 +44,13 @@ export function PipelineStepper({
   round,
   steps,
   onRunHref,
+  runSlot,
 }: {
   round: string;
   steps: Step[];
   onRunHref?: string;
+  /** runnable 단계의 실행 트리거를 주입한다(없으면 onRunHref 링크로 폴백 — 프리뷰 호환) */
+  runSlot?: ReactNode;
 }) {
   return (
     <div className="flex items-center gap-4 rounded-lg border border-neutral-200 bg-white p-5">
@@ -59,13 +63,15 @@ export function PipelineStepper({
           {i > 0 && <ChevronRight className="size-4 text-zinc-300" />}
           <span className="flex items-center gap-2.5">
             {s.state === "runnable" ? (
-              <a
-                href={onRunHref ?? "#"}
-                className="flex items-center gap-1.5 rounded-md bg-app-primary px-3 py-[7px] text-xs font-semibold text-white"
-              >
-                <Play className="size-3.5" />
-                실행
-              </a>
+              (runSlot ?? (
+                <a
+                  href={onRunHref ?? "#"}
+                  className="flex items-center gap-1.5 rounded-md bg-app-primary px-3 py-[7px] text-xs font-semibold text-white"
+                >
+                  <Play className="size-3.5" />
+                  실행
+                </a>
+              ))
             ) : (
               <StepChip state={s.state} />
             )}
