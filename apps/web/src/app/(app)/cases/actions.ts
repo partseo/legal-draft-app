@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createRouteClient } from "@/lib/db/clients";
+import { inputStorageKey } from "@/lib/storage-key";
 
 const ALLOWED_EXT = [".md", ".txt", ".pdf"];
 
@@ -42,7 +43,7 @@ export async function createCase(
   for (const f of files) uploads.push({ name: f.name, body: f, contentType: f.type || "application/octet-stream" });
 
   for (const u of uploads) {
-    const path = `${caseRow.id}/입력/${u.name}`;
+    const path = inputStorageKey(caseRow.id, u.name);
     const { error: upErr } = await supabase.storage.from("case-files").upload(path, u.body, {
       contentType: u.contentType,
       upsert: false,

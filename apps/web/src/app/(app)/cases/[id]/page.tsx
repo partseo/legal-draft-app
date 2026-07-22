@@ -71,7 +71,9 @@ export default async function CaseDetailPage({
   const inputFiles = (files ?? []).filter((f) => f.kind === "입력");
   const signed = await Promise.all(
     inputFiles.map(async (f) => {
-      const { data } = await supabase.storage.from("case-files").createSignedUrl(f.storage_path, 3600);
+      const { data } = await supabase.storage
+        .from("case-files")
+        .createSignedUrl(f.storage_path, 3600, { download: f.filename });
       return { ...f, url: data?.signedUrl };
     }),
   );
@@ -83,7 +85,8 @@ export default async function CaseDetailPage({
       label: `v${v.version}`,
       caption: v.filename,
       current: i === 0,
-      href: (await supabase.storage.from("case-files").createSignedUrl(v.storagePath, 3600)).data?.signedUrl,
+      href: (await supabase.storage.from("case-files").createSignedUrl(v.storagePath, 3600, { download: v.filename }))
+        .data?.signedUrl,
     })),
   );
 

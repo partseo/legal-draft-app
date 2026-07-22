@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Tables, Enums } from "@/lib/db/database.types";
+import { artifactStorageKey } from "@/lib/storage-key";
 
 export type RunStage = Enums<"run_stage">;
 export type FileKind = Enums<"file_kind">;
@@ -166,7 +167,7 @@ export function createSupabaseRunStore(db: SupabaseClient<Database>): RunStore {
     },
 
     async saveArtifact(a) {
-      const storagePath = `${a.caseId}/산출물/${a.kind}/v${a.version}/${a.filename}`;
+      const storagePath = artifactStorageKey(a.caseId, a.version, a.filename);
       const up = await db.storage.from(BUCKET).upload(storagePath, a.content, { upsert: false });
       if (up.error) throw new Error(`산출물 업로드 실패 ${storagePath}: ${up.error.message}`);
       const { error } = await db.from("case_files").insert({
