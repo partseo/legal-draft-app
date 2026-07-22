@@ -1,4 +1,4 @@
-﻿export type Json =
+export type Json =
   | string
   | number
   | boolean
@@ -39,6 +39,33 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_settings: {
+        Row: {
+          agent_config_hash: string | null
+          anthropic_agent_id: string | null
+          anthropic_environment_id: string | null
+          id: number
+          run_cost_cap_usd: number
+          updated_at: string
+        }
+        Insert: {
+          agent_config_hash?: string | null
+          anthropic_agent_id?: string | null
+          anthropic_environment_id?: string | null
+          id?: number
+          run_cost_cap_usd?: number
+          updated_at?: string
+        }
+        Update: {
+          agent_config_hash?: string | null
+          anthropic_agent_id?: string | null
+          anthropic_environment_id?: string | null
+          id?: number
+          run_cost_cap_usd?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       case_files: {
         Row: {
           case_id: string
