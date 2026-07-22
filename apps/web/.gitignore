@@ -41,5 +41,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# 에이전트 번들 산출물 (scripts/build-agent-bundle.mjs 가 생성)
-src/lib/agent/bundle-data.json
+# 에이전트 번들 산출물은 이제 커밋한다 (웹앱 자기완결 — 소스는 형제 litigation-writer).
+# 재생성: AGENT_SRC_DIR=<litigation-writer 경로> npm run bundle
