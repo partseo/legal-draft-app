@@ -7,7 +7,10 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "bundle": "node scripts/build-agent-bundle.mjs",
+    "prebuild": "node scripts/build-agent-bundle.mjs",
+    "predev": "node scripts/build-agent-bundle.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
@@ -19,6 +22,7 @@
     "next": "15.5.20",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "tar": "^7.5.21",
     "zod": "^4.4.3"
   },
   "devDependencies": {

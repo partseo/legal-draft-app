@@ -40,3 +40,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 에이전트 번들 산출물 (scripts/build-agent-bundle.mjs 가 생성)
+src/lib/agent/bundle-data.json
