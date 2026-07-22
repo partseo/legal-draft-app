@@ -4,7 +4,14 @@ import { createRouteClient } from "@/lib/db/clients";
 import { CaseHeader } from "@/components/case/case-header";
 import { PipelineStepper, type Step } from "@/components/case/pipeline-stepper";
 import { CaseTabBar, CASE_TABS, type CaseTab } from "@/components/case/case-tabs";
+import { ContextView } from "@/components/case/context-view";
+import { DraftView } from "@/components/case/draft-view";
+import { VerifyView } from "@/components/case/verify-view";
+import { GateBar } from "@/components/case/gate-bar";
 import { formatRelative } from "@/lib/time";
+import { contextJsonToView, mdToSections, renderContextToSections, parseVerifyReport } from "@/lib/artifacts";
+import { getCaseDetail } from "./data";
+import { approveStage, requestChanges } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +21,14 @@ const STAGE_TAB_HINT: Partial<Record<CaseTab, string>> = {
   서면: "서면 작성 단계 실행 후 생성됩니다.",
   검증보고: "인용검증 단계 실행 후 생성됩니다.",
 };
+
+function safeJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
 
 export default async function CaseDetailPage({
   params,
@@ -48,7 +63,19 @@ export default async function CaseDetailPage({
     }),
   );
 
-  // P1: runs 데이터가 없으므로 항상 초기 상태 (P2에서 runs 기반으로 전환)
+  const detail = await getCaseDetail(id);
+
+  // 서면 버전 서명 URL
+  const draftVersions = await Promise.all(
+    detail.draftVersions.map(async (v, i) => ({
+      label: `v${v.version}`,
+      caption: v.filename,
+      current: i === 0,
+      href: (await supabase.storage.from("case-files").createSignedUrl(v.storagePath, 3600)).data?.signedUrl,
+    })),
+  );
+
+  // P1: runs 데이터가 없으므로 항상 초기 상태 (Task 16에서 detail.stepStates로 전환)
   const steps: Step[] = [
     { label: "① 사건구성", caption: "실행 가능", state: "runnable" },
     { label: "② 리서치", caption: "잠김", state: "locked" },
@@ -58,7 +85,7 @@ export default async function CaseDetailPage({
 
   return (
     <div className="flex flex-col gap-5 p-9">
-      <CaseHeader title={caseRow.title} status={caseRow.status} assigneeName={caseRow.assignee?.display_name} />
+      <CaseHeader title={caseRow.title} status={detail.caseStatus} assigneeName={caseRow.assignee?.display_name} />
       <PipelineStepper round="라운드 1 — 소장" steps={steps} onRunHref={`/cases/${id}?tab=개요&run=1`} />
       {run && (
         <div className="flex items-center gap-3 rounded-lg bg-app-tint p-4">
@@ -91,9 +118,7 @@ export default async function CaseDetailPage({
                     <span className="size-2.5 rounded-full border-2 border-app-primary bg-white" />
                   </div>
                   <div className="flex flex-col gap-1">
-                    <span className="text-sm font-medium text-neutral-950">
-                      입력 파일 {signed.length}개 업로드
-                    </span>
+                    <span className="text-sm font-medium text-neutral-950">입력 파일 {signed.length}개 업로드</span>
                     <span className="text-xs text-neutral-500">{formatRelative(signed[0].created_at)}</span>
                   </div>
                 </div>
@@ -150,9 +175,77 @@ export default async function CaseDetailPage({
         </div>
       )}
 
-      {tab !== "개요" && tab !== "입력자료" && (
-        <EmptyCard message={`아직 생성되지 않았습니다 — ${STAGE_TAB_HINT[tab]}`} />
-      )}
+      {tab === "사건컨텍스트" &&
+        (detail.artifacts["사건컨텍스트"]?.text ? (
+          <div className="flex flex-col gap-4">
+            {detail.stepStates.intake === "action" && !detail.activeRun && (
+              <GateBar
+                message="사건컨텍스트 검수 대기 — 승인하면 리서치가 잠금 해제됩니다"
+                onApprove={approveStage.bind(null, id, detail.roundId, "intake")}
+                onRequestChanges={requestChanges.bind(null, id, detail.roundId, "intake")}
+              />
+            )}
+            <ContextView data={contextJsonToView(safeJson(detail.artifacts["사건컨텍스트"].text))} />
+          </div>
+        ) : (
+          <EmptyCard message={`아직 생성되지 않았습니다 — ${STAGE_TAB_HINT["사건컨텍스트"]}`} />
+        ))}
+
+      {tab === "리서치" &&
+        (detail.artifacts["리서치"]?.text ? (
+          <div className="flex flex-col gap-4">
+            {detail.stepStates.research === "action" && !detail.activeRun && (
+              <GateBar
+                message="리서치 검수 대기 — 승인하면 서면 작성이 잠금 해제됩니다"
+                onApprove={approveStage.bind(null, id, detail.roundId, "research")}
+                onRequestChanges={requestChanges.bind(null, id, detail.roundId, "research")}
+              />
+            )}
+            <DraftView docTitle="쟁점별 법리" sections={mdToSections(detail.artifacts["리서치"].text)} versions={[]} />
+          </div>
+        ) : (
+          <EmptyCard message={`아직 생성되지 않았습니다 — ${STAGE_TAB_HINT["리서치"]}`} />
+        ))}
+
+      {tab === "서면" &&
+        (detail.artifacts["context_json"]?.text || draftVersions.length > 0 ? (
+          <div className="flex flex-col gap-4">
+            {detail.stepStates.draft === "action" && !detail.activeRun && (
+              <GateBar
+                message="서면 검수 대기 — 승인하면 인용검증이 잠금 해제됩니다"
+                onApprove={approveStage.bind(null, id, detail.roundId, "draft")}
+                onRequestChanges={requestChanges.bind(null, id, detail.roundId, "draft")}
+              />
+            )}
+            <DraftView
+              docTitle={detail.roundKind === "소장" ? "소장 초안" : "준비서면 초안"}
+              sections={
+                detail.artifacts["context_json"]?.text
+                  ? renderContextToSections(safeJson(detail.artifacts["context_json"].text))
+                  : []
+              }
+              versions={draftVersions}
+            />
+          </div>
+        ) : (
+          <EmptyCard message={`아직 생성되지 않았습니다 — ${STAGE_TAB_HINT["서면"]}`} />
+        ))}
+
+      {tab === "검증보고" &&
+        (detail.artifacts["검증보고"]?.text ? (
+          <div className="flex flex-col gap-4">
+            {detail.stepStates.verify === "action" && !detail.verifyHasFail && !detail.activeRun && (
+              <GateBar
+                message="인용검증 통과 — 승인하면 라운드가 완료됩니다"
+                onApprove={approveStage.bind(null, id, detail.roundId, "verify")}
+                onRequestChanges={requestChanges.bind(null, id, detail.roundId, "verify")}
+              />
+            )}
+            <VerifyView rows={parseVerifyReport(detail.artifacts["검증보고"].text).rows} />
+          </div>
+        ) : (
+          <EmptyCard message={`아직 생성되지 않았습니다 — ${STAGE_TAB_HINT["검증보고"]}`} />
+        ))}
     </div>
   );
 }

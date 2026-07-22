@@ -1,6 +1,6 @@
 import { Download, FileDown } from "lucide-react";
 
-export type DraftVersion = { label: string; caption: string; current?: boolean };
+export type DraftVersion = { label: string; caption: string; current?: boolean; href?: string };
 export type DraftSection = { title: string; body: string };
 
 export function DraftView({
@@ -24,10 +24,22 @@ export function DraftView({
         ))}
       </div>
       <div className="flex w-[360px] flex-col gap-4">
-        <button className="flex items-center justify-center gap-2 rounded-lg bg-app-primary px-4 py-3 text-sm font-semibold text-white">
-          <FileDown className="size-[18px]" />
-          DOCX 다운로드
-        </button>
+        {(() => {
+          const current = versions.find((v) => v.current) ?? versions[0];
+          const cls =
+            "flex items-center justify-center gap-2 rounded-lg bg-app-primary px-4 py-3 text-sm font-semibold text-white";
+          return current?.href ? (
+            <a href={current.href} className={cls}>
+              <FileDown className="size-[18px]" />
+              DOCX 다운로드
+            </a>
+          ) : (
+            <button type="button" disabled className={`${cls} disabled:opacity-50`}>
+              <FileDown className="size-[18px]" />
+              DOCX 다운로드
+            </button>
+          );
+        })()}
         <div className="flex flex-col gap-1 rounded-lg border border-neutral-200 bg-white p-2">
           <span className="px-2 pb-1 pt-2 text-sm font-semibold text-neutral-950">버전</span>
           {versions.map((v) => (
@@ -49,13 +61,26 @@ export function DraftView({
                 <span className="text-xs text-neutral-500">{v.caption}</span>
               </span>
               <span className="flex-1" />
-              <button
-                className={`flex size-8 items-center justify-center rounded-md ${
-                  v.current ? "border border-neutral-200 bg-white" : ""
-                }`}
-              >
-                <Download className={`size-4 ${v.current ? "text-app-primary" : "text-neutral-500"}`} />
-              </button>
+              {v.href ? (
+                <a
+                  href={v.href}
+                  className={`flex size-8 items-center justify-center rounded-md ${
+                    v.current ? "border border-neutral-200 bg-white" : ""
+                  }`}
+                >
+                  <Download className={`size-4 ${v.current ? "text-app-primary" : "text-neutral-500"}`} />
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className={`flex size-8 items-center justify-center rounded-md disabled:opacity-40 ${
+                    v.current ? "border border-neutral-200 bg-white" : ""
+                  }`}
+                >
+                  <Download className={`size-4 ${v.current ? "text-app-primary" : "text-neutral-500"}`} />
+                </button>
+              )}
             </div>
           ))}
         </div>
