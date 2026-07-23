@@ -55,7 +55,12 @@ describe("ensureProvisioned", () => {
     expect(agentBody["model"]).toBe("claude-sonnet-5");
     expect(agentBody["tools"]).toEqual([
       { type: "agent_toolset_20260401" },
-      { type: "mcp_toolset", mcp_server_name: "korean-law" },
+      {
+        type: "mcp_toolset",
+        mcp_server_name: "korean-law",
+        // 명시 안 하면 기본값 always_ask — MCP 도구 호출이 승인 대기로 멈춰 세션이 idle로 끝난다
+        default_config: { enabled: true, permission_policy: { type: "always_allow" } },
+      },
     ]);
     expect(agentBody["mcp_servers"]).toEqual([
       {
@@ -156,8 +161,14 @@ describe("세션·이벤트·파일 요청 형상", () => {
 
 describe("computeConfigHash", () => {
   it("입력이 같으면 같고 다르면 다르다", () => {
-    const a = computeConfigHash({ bundleHash: "b", model: "m", mcpUrl: "u", systemPrompt: "s" });
-    expect(a).toBe(computeConfigHash({ bundleHash: "b", model: "m", mcpUrl: "u", systemPrompt: "s" }));
-    expect(a).not.toBe(computeConfigHash({ bundleHash: "b2", model: "m", mcpUrl: "u", systemPrompt: "s" }));
+    const base = { bundleHash: "b", model: "m", mcpUrl: "u", systemPrompt: "s", toolsConfig: "t" };
+    const a = computeConfigHash(base);
+    expect(a).toBe(computeConfigHash({ ...base }));
+    expect(a).not.toBe(computeConfigHash({ ...base, bundleHash: "b2" }));
+  });
+
+  it("도구 구성이 바뀌면 해시가 바뀐다 (권한 정책 변경 시 재프로비저닝 보장)", () => {
+    const base = { bundleHash: "b", model: "m", mcpUrl: "u", systemPrompt: "s", toolsConfig: "t" };
+    expect(computeConfigHash(base)).not.toBe(computeConfigHash({ ...base, toolsConfig: "t2" }));
   });
 });

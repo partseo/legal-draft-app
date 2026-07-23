@@ -19,13 +19,30 @@ type RuntimeEnv = {
   MCP_SHARED_SECRET: string;
 };
 
+/**
+ * 에이전트 도구 구성. mcp_toolset은 permission_policy를 명시적으로 always_allow로 둔다 —
+ * 생략 시 기본값 always_ask라서 MCP 도구 호출이 승인 대기로 멈추고 세션이 결과 없이
+ * idle로 끝난다(리서치 단계 연쇄 실패의 원인).
+ */
+const AGENT_TOOLS = [
+  { type: "agent_toolset_20260401" },
+  {
+    type: "mcp_toolset",
+    mcp_server_name: "korean-law",
+    default_config: { enabled: true, permission_policy: { type: "always_allow" } },
+  },
+];
+
 export function computeConfigHash(i: {
   bundleHash: string;
   model: string;
   mcpUrl: string;
   systemPrompt: string;
+  toolsConfig: string;
 }): string {
-  return createHash("sha256").update([i.bundleHash, i.model, i.mcpUrl, i.systemPrompt].join("\0")).digest("hex");
+  return createHash("sha256")
+    .update([i.bundleHash, i.model, i.mcpUrl, i.systemPrompt, i.toolsConfig].join("\0"))
+    .digest("hex");
 }
 
 type RawEvent = {
@@ -76,6 +93,7 @@ export function createManagedRuntime(deps: { env: RuntimeEnv; settingsDb: Settin
     model: env.ANTHROPIC_AGENT_MODEL,
     mcpUrl,
     systemPrompt: SYSTEM_PROMPT,
+    toolsConfig: JSON.stringify(AGENT_TOOLS),
   });
   let cached: { agentId: string; environmentId: string } | null = null;
 
@@ -99,7 +117,7 @@ export function createManagedRuntime(deps: { env: RuntimeEnv; settingsDb: Settin
       name: "litigation-writer",
       model: env.ANTHROPIC_AGENT_MODEL,
       system: SYSTEM_PROMPT,
-      tools: [{ type: "agent_toolset_20260401" }, { type: "mcp_toolset", mcp_server_name: "korean-law" }],
+      tools: AGENT_TOOLS,
       mcp_servers: [{ type: "url", name: "korean-law", url: mcpUrl }],
     });
     await saveProvision(settingsDb, { environmentId, agentId: agent.id, configHash });
