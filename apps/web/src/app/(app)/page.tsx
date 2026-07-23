@@ -1,11 +1,7 @@
 import Link from "next/link";
 import { Plus, Search, ChevronDown } from "lucide-react";
 import { createRouteClient } from "@/lib/db/clients";
-import { StatusBadge } from "@/components/status-badge";
-import { AvatarBadge } from "@/components/avatar-badge";
-import { MiniStepper } from "@/components/mini-stepper";
-import { caseStatusTone, progressFromStatus } from "@/lib/status";
-import { formatRelative } from "@/lib/time";
+import { CaseRow } from "@/components/case-row";
 
 export const dynamic = "force-dynamic";
 
@@ -60,40 +56,19 @@ export default async function CasesPage() {
             <span className="w-[140px]">상태</span>
             <span className="w-[110px]">최근 활동</span>
           </div>
-          {cases.map((c, i) => {
-            const tone = caseStatusTone(c.status);
-            const needsAttention = tone === "action";
-            return (
-              <Link
-                key={c.id}
-                href={`/cases/${c.id}`}
-                className={`flex items-center px-4 py-3 hover:bg-neutral-50 ${
-                  i > 0 ? "border-t border-neutral-200" : ""
-                } ${needsAttention ? "border-l-2 border-l-st-action" : "border-l-2 border-l-transparent"}`}
-              >
-                <span className="flex-1 truncate text-sm font-medium text-neutral-950">{c.title}</span>
-                <span className="flex w-[170px] items-center gap-2">
-                  {c.assignee ? (
-                    <>
-                      <AvatarBadge name={c.assignee.display_name} />
-                      <span className="text-sm text-neutral-950">{c.assignee.display_name}</span>
-                    </>
-                  ) : (
-                    <span className="text-sm text-neutral-400">미지정</span>
-                  )}
-                </span>
-                <span className="w-[150px]">
-                  <MiniStepper filled={progressFromStatus(c.status)} />
-                </span>
-                <span className="w-[140px]">
-                  <StatusBadge status={c.status} pulse={c.status === "응답 필요"} />
-                </span>
-                <span className="w-[110px] text-[13px] text-neutral-500">
-                  {formatRelative(c.updated_at)}
-                </span>
-              </Link>
-            );
-          })}
+          {cases.map((c, i) => (
+            <CaseRow
+              key={c.id}
+              index={i}
+              c={{
+                id: c.id,
+                title: c.title,
+                status: c.status,
+                updated_at: c.updated_at,
+                assigneeName: c.assignee?.display_name ?? null,
+              }}
+            />
+          ))}
         </div>
       )}
     </div>

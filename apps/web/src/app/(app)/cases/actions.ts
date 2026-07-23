@@ -1,7 +1,8 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createRouteClient } from "@/lib/db/clients";
+import { createRouteClient, createServiceClient } from "@/lib/db/clients";
 import { inputStorageKey } from "@/lib/storage-key";
 
 const ALLOWED_EXT = [".md", ".txt", ".pdf"];
@@ -60,4 +61,38 @@ export async function createCase(
   }
 
   redirect(`/cases/${caseRow.id}`);
+}
+
+export type DeleteCaseResult = { ok: true } | { error: string };
+
+/** 사건 완전 삭제 — DB는 cascade, 스토리지 파일은 service-role로 별도 제거. */
+export async function deleteCase(caseId: string): Promise<DeleteCaseResult> {
+  if (!caseId) return { error: "사건 ID가 없습니다." };
+
+  const supabase = await createRouteClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "로그인이 필요합니다." };
+
+  // case_files는 cascade로 사라지므로, 스토리지 경로는 행 삭제 전에 확보한다.
+  const { data: files, error: filesErr } = await supabase
+    .from("case_files")
+    .select("storage_path")
+    .eq("case_id", caseId);
+  if (filesErr) return { error: `파일 목록 조회 실패: ${filesErr.message}` };
+
+  const paths = (files ?? []).map((f) => f.storage_path).filter(Boolean);
+  if (paths.length > 0) {
+    // case-files 버킷엔 delete RLS 정책이 없으므로 service-role로 제거한다.
+    const service = createServiceClient();
+    const { error: rmErr } = await service.storage.from("case-files").remove(paths);
+    if (rmErr) return { error: `파일 삭제 실패: ${rmErr.message}` };
+  }
+
+  const { error: delErr } = await supabase.from("cases").delete().eq("id", caseId);
+  if (delErr) return { error: `사건 삭제 실패: ${delErr.message}` };
+
+  revalidatePath("/");
+  return { ok: true };
 }
