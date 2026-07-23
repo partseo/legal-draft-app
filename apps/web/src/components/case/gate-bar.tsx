@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { CircleAlert } from "lucide-react";
+import { CircleAlert, Loader2 } from "lucide-react";
 
 /** 검수 게이트 바 (④-d, c5). 액션 props가 없으면 렌더 전용(프리뷰 호환). */
 export function GateBar({
@@ -28,9 +28,10 @@ export function GateBar({
           type="button"
           disabled={pending || !onApprove}
           onClick={() => onApprove && startTransition(() => onApprove())}
-          className="rounded-md bg-app-primary px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-50"
+          className="flex items-center gap-1.5 rounded-md bg-app-primary px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-50"
         >
-          승인하고 다음 단계로
+          {pending && <Loader2 className="size-3.5 animate-spin" />}
+          {pending ? "승인 중…" : "승인하고 다음 단계로"}
         </button>
         <button
           type="button"
@@ -54,9 +55,10 @@ export function GateBar({
             type="button"
             disabled={pending || note.trim().length === 0}
             onClick={() => onRequestChanges && startTransition(() => onRequestChanges(note))}
-            className="self-end rounded-md bg-app-primary px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-50"
+            className="flex items-center gap-1.5 self-end rounded-md bg-app-primary px-4 py-2 text-[13px] font-semibold text-white disabled:opacity-50"
           >
-            재실행
+            {pending && <Loader2 className="size-3.5 animate-spin" />}
+            {pending ? "재실행 중…" : "재실행"}
           </button>
         </div>
       )}

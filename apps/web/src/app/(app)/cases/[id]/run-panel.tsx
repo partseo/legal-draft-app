@@ -11,6 +11,7 @@ import {
 } from "@/components/case/console-drawer";
 import { SeniorAdviceModal } from "@/components/case/senior-advice-modal";
 import type { UiEvent } from "@/lib/runs/ui-events";
+import { stageLabel } from "@/lib/runs/labels";
 
 type CheckpointDto = {
   id: string;
@@ -70,7 +71,11 @@ export function RunPanel({
     es.onmessage = (m) => {
       const e = JSON.parse(m.data) as UiEvent;
       if (e.kind === "timeline") {
-        setItems((prev) => [...prev.map((p) => ({ ...p, state: "done" as const })), { text: e.text, state: "running" }]);
+        setItems((prev) => {
+          const last = prev[prev.length - 1];
+          if (last && last.text === e.text) return prev; // 동일 문구 반복은 한 줄로 유지
+          return [...prev.map((p) => ({ ...p, state: "done" as const })), { text: e.text, state: "running" }];
+        });
       } else if (e.kind === "cost") setCost(e.usd);
       else if (e.kind === "advice") setAdvice(e.lines);
       else if (e.kind === "status") {
@@ -111,6 +116,7 @@ export function RunPanel({
         <CheckpointConsole
           issues={checkpoint.payload.issues ?? []}
           question={checkpoint.kind === "질문" ? checkpoint.payload.question : undefined}
+          submitting={busy}
           onSubmit={async (issues) => {
             if (busy) return;
             if (await post(`/api/checkpoints/${checkpoint.id}/respond`, { response: { issues } })) router.refresh();
@@ -122,7 +128,8 @@ export function RunPanel({
         />
       ) : (
         <RunningConsole
-          title={`실행 중 — ${run.stage}`}
+          title={`실행 중 — ${stageLabel(run.stage)}`}
+          submitting={busy}
           items={items.length > 0 ? items : [{ text: "세션 준비 중…", state: "running" }]}
           footer={
             cost !== null

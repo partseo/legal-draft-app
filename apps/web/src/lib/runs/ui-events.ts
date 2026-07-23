@@ -19,7 +19,8 @@ export function toUiEvents(e: RuntimeEvent, opts: { live: boolean }): UiEvent[] 
       return out;
     }
     case "tool_use":
-      return [{ kind: "timeline", id: e.id, text: `도구 실행: ${e.name}`, state: "done" }];
+      // 도구 실행 세부는 표시하지 않는다 — 진행 상황은 에이전트의 한국어 서술(message)로 전달된다.
+      return [];
     case "error":
       return [{ kind: "timeline", id: e.id, text: `오류: ${e.message}`, state: "done" }];
     default:

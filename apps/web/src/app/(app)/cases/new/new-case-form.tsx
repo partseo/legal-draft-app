@@ -134,8 +134,9 @@ export function NewCaseForm({ members }: { members: { id: string; display_name: 
         </button>
         <button
           type="button"
+          disabled={pending}
           onClick={() => router.back()}
-          className="rounded-lg px-[18px] py-[11px] text-sm font-medium text-zinc-600"
+          className="rounded-lg px-[18px] py-[11px] text-sm font-medium text-zinc-600 disabled:opacity-50"
         >
           취소
         </button>

@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { Check, ChevronDown, ChevronRight, Lock, Loader2, Play, X, CircleAlert } from "lucide-react";
 
 export type StepState = "runnable" | "locked" | "running" | "done" | "action" | "fail";
 
-export type Step = { label: string; caption: string; state: StepState };
+/** href가 있으면 칩을 클릭해 해당 단계 탭으로 이동(검수 유도). runnable은 runSlot이 우선. */
+export type Step = { label: string; caption: string; state: StepState; href?: string };
 
 function StepChip({ state }: { state: StepState }) {
   switch (state) {
@@ -72,6 +74,10 @@ export function PipelineStepper({
                   실행
                 </a>
               ))
+            ) : s.href ? (
+              <Link href={s.href} title="검수하러 가기" className="transition-opacity hover:opacity-80">
+                <StepChip state={s.state} />
+              </Link>
             ) : (
               <StepChip state={s.state} />
             )}

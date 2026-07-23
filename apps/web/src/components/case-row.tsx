@@ -88,7 +88,7 @@ export function CaseRow({ c, index }: { c: CaseListItem; index: number }) {
         type="button"
         onClick={openModal}
         aria-label={`${c.title} 사건 삭제`}
-        className="absolute right-2 top-1/2 z-10 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-neutral-400 opacity-0 hover:bg-st-block-bg hover:text-st-block focus-visible:opacity-100 group-hover:opacity-100"
+        className="absolute right-2 top-1/2 z-10 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-neutral-400 hover:bg-st-block-bg hover:text-st-block"
       >
         <Trash2 className="size-4" />
       </button>

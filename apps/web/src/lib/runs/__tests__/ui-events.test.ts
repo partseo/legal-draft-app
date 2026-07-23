@@ -24,9 +24,9 @@ describe("toUiEvents", () => {
     expect(replay.some((e) => e.kind === "advice")).toBe(false);
   });
 
-  it("tool_use → timeline running 표기", () => {
+  it("tool_use → 타임라인 미생성 (도구 세부는 화면에 표시하지 않음)", () => {
     const evs = toUiEvents({ id: "e2", at: null, type: "tool_use", name: "bash", inputSummary: "{}" }, { live: true });
-    expect(evs[0]).toMatchObject({ kind: "timeline", text: "도구 실행: bash" });
+    expect(evs).toEqual([]);
   });
 
   it("status/checkpoint 계열은 timeline 생성 안 함", () => {

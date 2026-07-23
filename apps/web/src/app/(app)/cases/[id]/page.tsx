@@ -8,6 +8,7 @@ import { ContextView } from "@/components/case/context-view";
 import { DraftView } from "@/components/case/draft-view";
 import { VerifyView } from "@/components/case/verify-view";
 import { GateBar } from "@/components/case/gate-bar";
+import { ReviewCta } from "@/components/case/review-cta";
 import { formatRelative } from "@/lib/time";
 import { STAGE_LABELS } from "@/lib/status";
 import { STAGES } from "@/lib/pipeline";
@@ -23,6 +24,14 @@ const STAGE_TAB_HINT: Partial<Record<CaseTab, string>> = {
   리서치: "리서치 단계 실행 후 생성됩니다.",
   서면: "서면 작성 단계 실행 후 생성됩니다.",
   검증보고: "인용검증 단계 실행 후 생성됩니다.",
+};
+
+/** 각 단계 산출물이 표시되는 탭 (검수하러 가기 대상) */
+const STAGE_TAB: Record<string, CaseTab> = {
+  intake: "사건컨텍스트",
+  research: "리서치",
+  draft: "서면",
+  verify: "검증보고",
 };
 
 const STEP_MARK = ["①", "②", "③", "④"];
@@ -90,18 +99,47 @@ export default async function CaseDetailPage({
     })),
   );
 
-  const steps: Step[] = STAGES.map((s, i) => ({
-    label: `${STEP_MARK[i]} ${STAGE_LABELS[i]}`,
-    caption: STEP_CAPTION[detail.stepStates[s]],
-    state: detail.stepStates[s],
-  }));
+  const steps: Step[] = STAGES.map((s, i) => {
+    const state = detail.stepStates[s];
+    // 검수 대기(action인데 진행 중 run 없음) 또는 verify 실패 → 해당 단계 탭으로 이동 가능
+    const needsReview = state === "action" && !detail.activeRun;
+    const linkable = needsReview || (s === "verify" && state === "fail");
+    return {
+      label: `${STEP_MARK[i]} ${STAGE_LABELS[i]}`,
+      caption: needsReview ? "검수 대기 · 클릭해 검수" : STEP_CAPTION[state],
+      state,
+      href: linkable ? `/cases/${id}?tab=${encodeURIComponent(STAGE_TAB[s])}` : undefined,
+    };
+  });
   const firstRunnable = STAGES.find((s) => detail.stepStates[s] === "runnable" && detail.startable[s]);
   const runSlot = firstRunnable ? <StartRunButton caseId={id} stage={firstRunnable} label="실행" /> : undefined;
+
+  // 변호사 검수·승인이 필요한 지점 안내 (activeRun 중이면 우측 콘솔이 처리하므로 배너 없음)
+  const reviewStage = STAGES.find((s) => detail.stepStates[s] === "action");
+  const attention: { tab: CaseTab; message: string } | null = detail.activeRun
+    ? null
+    : detail.verifyHasFail
+      ? {
+          tab: "검증보고",
+          message: "인용검증에서 실패한 인용이 있습니다 — 서면을 수정해 재검증하세요. (제출 금지 상태)",
+        }
+      : reviewStage
+        ? {
+            tab: STAGE_TAB[reviewStage],
+            message: `${STAGE_LABELS[STAGES.indexOf(reviewStage)]} 단계가 완료됐습니다 — 자동 진행이 아니라 변호사님의 검수·승인이 필요합니다. 산출물을 확인하고 승인하세요.`,
+          }
+        : null;
 
   return (
     <div className="flex flex-col gap-5 p-9">
       <CaseHeader title={caseRow.title} status={detail.caseStatus} assigneeName={caseRow.assignee?.display_name} />
       <PipelineStepper round={`라운드 1 · ${detail.roundKind}`} steps={steps} runSlot={runSlot} />
+      {attention && tab !== attention.tab && (
+        <ReviewCta
+          message={attention.message}
+          href={`/cases/${id}?tab=${encodeURIComponent(attention.tab)}`}
+        />
+      )}
       <CaseTabBar active={tab} baseHref={`/cases/${id}`} />
 
       <div className="flex gap-6">
@@ -258,7 +296,10 @@ export default async function CaseDetailPage({
                     onRequestChanges={requestChanges.bind(null, id, detail.roundId, "verify")}
                   />
                 )}
-                <VerifyView rows={parseVerifyReport(detail.artifacts["검증보고"].text).rows} />
+                <VerifyView
+                  rows={parseVerifyReport(detail.artifacts["검증보고"].text).rows}
+                  onRequestChanges={requestChanges.bind(null, id, detail.roundId, "verify")}
+                />
               </div>
             ) : (
               <EmptyCard message={`아직 생성되지 않았습니다 — ${STAGE_TAB_HINT["검증보고"]}`} />

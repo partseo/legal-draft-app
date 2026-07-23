@@ -17,11 +17,13 @@ export function RunningConsole({
   items,
   footer,
   onCancel,
+  submitting = false,
 }: {
   title: string;
   items: TimelineItem[];
   footer: string;
   onCancel?: () => void;
+  submitting?: boolean;
 }) {
   return (
     <aside className="flex w-[420px] shrink-0 flex-col gap-3 border-l border-neutral-200 bg-white p-5">
@@ -32,12 +34,12 @@ export function RunningConsole({
         </span>
         <button
           type="button"
-          disabled={!onCancel}
+          disabled={!onCancel || submitting}
           onClick={onCancel}
           className="flex items-center gap-1.5 rounded-md border border-st-block bg-white px-3 py-1.5 text-[13px] font-semibold text-st-block disabled:opacity-50"
         >
-          <X className="size-3.5" />
-          실행 취소
+          {submitting ? <Loader2 className="size-3.5 animate-spin" /> : <X className="size-3.5" />}
+          {submitting ? "취소 중…" : "실행 취소"}
         </button>
       </div>
       <div className="flex flex-1 flex-col gap-2">
@@ -75,11 +77,13 @@ export function CheckpointConsole({
   question,
   onSubmit,
   onSubmitAnswer,
+  submitting = false,
 }: {
   issues: CheckpointIssue[];
   question?: string;
   onSubmit?: (issues: CheckpointIssue[]) => void;
   onSubmitAnswer?: (answer: string) => void;
+  submitting?: boolean;
 }) {
   const [rows, setRows] = useState<CheckpointIssue[]>(issues);
   const [answer, setAnswer] = useState("");
@@ -102,12 +106,12 @@ export function CheckpointConsole({
           />
           <button
             type="button"
-            disabled={!onSubmitAnswer || answer.trim().length === 0}
+            disabled={!onSubmitAnswer || answer.trim().length === 0 || submitting}
             onClick={() => onSubmitAnswer?.(answer.trim())}
             className="flex items-center justify-center gap-2 rounded-md bg-app-primary px-4 py-[11px] text-sm font-semibold text-white disabled:opacity-50"
           >
-            <Check className="size-4" />
-            답변 보내기
+            {submitting ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
+            {submitting ? "보내는 중…" : "답변 보내기"}
           </button>
         </div>
         <span className="text-[11px] leading-normal text-neutral-500">
@@ -174,12 +178,12 @@ export function CheckpointConsole({
         </button>
         <button
           type="button"
-          disabled={!onSubmit || rows.length === 0}
+          disabled={!onSubmit || rows.length === 0 || submitting}
           onClick={() => onSubmit?.(rows)}
           className="flex items-center justify-center gap-2 rounded-md bg-app-primary px-4 py-[11px] text-sm font-semibold text-white disabled:opacity-50"
         >
-          <Check className="size-4" />
-          {rows.length}개 쟁점 승인하고 계속
+          {submitting ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
+          {submitting ? "승인 중…" : `${rows.length}개 쟁점 승인하고 계속`}
         </button>
       </div>
       <span className="text-[11px] leading-normal text-neutral-500">
