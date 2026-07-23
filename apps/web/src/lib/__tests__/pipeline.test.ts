@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { deriveStepStates, canStartStage, deriveCaseStatus, type PipelineInput } from "@/lib/pipeline";
+import { deriveStepStates, canStartStage, deriveCaseStatus, rerunKind, type PipelineInput } from "@/lib/pipeline";
 
 type Run = PipelineInput["runs"][number];
 type Review = PipelineInput["reviews"][number];
@@ -73,6 +73,29 @@ describe("canStartStage", () => {
 
   it("locked 단계는 불가", () => {
     expect(canStartStage(empty, "draft")).toBe(false);
+  });
+});
+
+describe("rerunKind", () => {
+  it("startable false → 항상 null (실행 중이거나 잠김)", () => {
+    expect(rerunKind("fail", false)).toBe(null);
+    expect(rerunKind("done", false)).toBe(null);
+    expect(rerunKind("action", false)).toBe(null);
+  });
+
+  it("fail → retry (큰 다시 시도 버튼)", () => {
+    expect(rerunKind("fail", true)).toBe("retry");
+  });
+
+  it("done/action → rerun (작은 아이콘 + confirm)", () => {
+    expect(rerunKind("done", true)).toBe("rerun");
+    expect(rerunKind("action", true)).toBe("rerun");
+  });
+
+  it("runnable/locked/running → null (기존 실행 버튼 또는 버튼 없음)", () => {
+    expect(rerunKind("runnable", true)).toBe(null);
+    expect(rerunKind("locked", true)).toBe(null);
+    expect(rerunKind("running", true)).toBe(null);
   });
 });
 

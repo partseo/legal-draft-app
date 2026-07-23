@@ -59,3 +59,16 @@ export function deriveCaseStatus(
   if (STAGES.some((s) => latestRun(input, s)?.status === "succeeded" && !isApproved(input, s))) return "검수 대기";
   return "대기";
 }
+
+/**
+ * 단계 재실행 버튼 종류.
+ * - "retry": 실패 단계 — 칩 자리에 큰 "다시 시도" 버튼 (확인 없이 즉시)
+ * - "rerun": 완료·검수대기 단계 — 라벨 옆 작은 ↻ 아이콘 (confirm 후)
+ * - null: 버튼 없음 (runnable은 기존 실행 버튼, locked/running/실행 중엔 미노출)
+ */
+export function rerunKind(state: StepState, startable: boolean): "retry" | "rerun" | null {
+  if (!startable) return null;
+  if (state === "fail") return "retry";
+  if (state === "done" || state === "action") return "rerun";
+  return null;
+}
