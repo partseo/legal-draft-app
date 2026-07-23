@@ -6,7 +6,7 @@ describe("prompts", () => {
     expect(SYSTEM_PROMPT).toContain("```checkpoint");
     expect(SYSTEM_PROMPT).toContain("```run-complete");
     expect(SYSTEM_PROMPT).toContain("```senior-advice");
-    expect(SYSTEM_PROMPT).toContain("/workspace/out");
+    expect(SYSTEM_PROMPT).toContain("/mnt/session/outputs");
   });
 
   it("draft 킥오프는 라운드 종류에 따라 스킬이 갈린다", () => {

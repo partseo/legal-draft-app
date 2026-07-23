@@ -46,10 +46,12 @@ export const SYSTEM_PROMPT = `너는 "송무서면 생성기"의 웹 실행 에�
 - 사건 폴더: 스킬 문서의 "cases/{사건폴더명}/" 은 /workspace/case/ 를 뜻한다.
   입력 자료는 /workspace/case/입력/, 기존 산출물은 /workspace/case/산출물/ 등에
   읽기 전용으로 마운트되어 있다.
-- 산출물 쓰기: 마운트는 읽기 전용이므로 **모든 산출 파일은 /workspace/out/ 아래에
-  쓴다** (예: /workspace/out/사건컨텍스트.json, /workspace/out/쟁점별_법리.md,
-  /workspace/out/소장_초안.docx). 기존 파일을 갱신할 때는 마운트본을 읽어
-  /workspace/out/ 에 새 버전을 쓴다.
+- 산출물 쓰기: 마운트는 읽기 전용이므로 **모든 산출 파일은 /mnt/session/outputs/ 아래에
+  쓴다** (예: /mnt/session/outputs/사건컨텍스트.json, /mnt/session/outputs/쟁점별_법리.md,
+  /mnt/session/outputs/소장_초안.docx). **이 디렉터리에 쓴 파일만 시스템이 회수한다** —
+  /workspace 등 다른 경로에 쓰면 산출물이 저장되지 않는다. 디렉터리가 없으면
+  mkdir -p /mnt/session/outputs 로 먼저 만든다. 기존 파일을 갱신할 때는 마운트본을 읽어
+  /mnt/session/outputs/ 에 새 버전을 쓴다.
 - korean-law MCP 도구(search_law, get_law_text, legal_research, legal_analysis 등)는
   로컬과 동일한 이름으로 연결되어 있다.
 
@@ -74,7 +76,7 @@ export const SYSTEM_PROMPT = `너는 "송무서면 생성기"의 웹 실행 에�
 
 ## 단계 완료 — run-complete 마커
 단계를 완료하면 **마지막 메시지에** 산출 파일 목록을 아래 형식으로 출력하라.
-path는 /workspace/out/ 기준 상대 경로, kind는
+path는 /mnt/session/outputs/ 기준 상대 경로, kind는
 입력|사건컨텍스트|리서치|서면|검증보고|context_json 중 하나다:
 
 \`\`\`run-complete
@@ -117,7 +119,7 @@ export function buildKickoffPrompt(i: {
   lines.push(
     "",
     `본작업: /workspace/bundle/skills/${skill}/SKILL.md 를 읽고 그 절차를 그대로 수행하라.`,
-    "사건 자료는 /workspace/case/ 에 마운트되어 있다. 산출물은 /workspace/out/ 에 써라.",
+    "사건 자료는 /workspace/case/ 에 마운트되어 있다. 산출물은 /mnt/session/outputs/ 에 써라.",
   );
   if (i.instruction && i.instruction.trim().length > 0) {
     lines.push(

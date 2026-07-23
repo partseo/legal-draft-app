@@ -3,9 +3,16 @@ import { parseCheckpoint, parseRunComplete } from "@/lib/agent/protocol";
 import { computeRunningMs, estimateRunCost, estimateTokens } from "@/lib/agent/usage";
 import type { RunStore } from "@/lib/runs/store";
 
-export type RunDeps = { store: RunStore; runtime: AgentRuntime; model: string };
+export type RunDeps = {
+  store: RunStore;
+  runtime: AgentRuntime;
+  model: string;
+  /** 산출 파일 harvest 재시도 (Files API 인덱싱 지연 대응). 테스트에서 delayMs=0으로 즉시화. */
+  harvest?: { attempts?: number; delayMs?: number };
+};
 const TERMINAL = ["succeeded", "failed", "canceled"];
 const ACTIVE: ("running" | "waiting_checkpoint")[] = ["running", "waiting_checkpoint"];
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function lastMessageText(events: RuntimeEvent[]): string {
   for (let i = events.length - 1; i >= 0; i--) {
@@ -86,14 +93,48 @@ export async function syncRun(deps: RunDeps, runId: string): Promise<{ status: s
   if (complete) {
     const claimed = await store.updateRun(runId, { status: "succeeded" }, { onlyIfStatus: ["running"] });
     if (!claimed) return { status: (await store.getRun(runId)).status }; // 경쟁 호출이 선점
-    const sessionFiles = await runtime.listSessionFiles(run.agent_session_id);
-    for (const f of complete.files) {
+
+    // 산출 파일은 /mnt/session/outputs/ 에 써야 Files API가 자동 캡처한다. idle 직후에는
+    // 인덱싱 지연(~1–3s)이 있어 선언 파일이 아직 목록에 없을 수 있으므로 짧게 재시도한다.
+    const declared = complete.files;
+    const someMissing = (list: { filename: string }[]) =>
+      declared.some((f) => !list.some((s) => s.filename === f.filename));
+    const attempts = deps.harvest?.attempts ?? 3;
+    const delayMs = deps.harvest?.delayMs ?? 1500;
+    let sessionFiles = await runtime.listSessionFiles(run.agent_session_id);
+    for (let i = 1; i < attempts && someMissing(sessionFiles); i++) {
+      await sleep(delayMs);
+      sessionFiles = await runtime.listSessionFiles(run.agent_session_id);
+    }
+
+    let harvested = 0;
+    for (const f of declared) {
       const match = sessionFiles.find((s) => s.filename === f.filename);
-      if (!match) continue; // 선언됐지만 못 찾은 파일 — error에 기록하지 않고 스킵(부분 harvest 허용)
+      if (!match) continue; // 일부 선언 파일 누락은 허용(부분 harvest)
       const content = await runtime.downloadFile(match.fileId);
       const version = await store.nextFileVersion(run.round.case_id, f.kind, f.filename);
       await store.saveArtifact({ caseId: run.round.case_id, kind: f.kind, filename: f.filename, version, content, runId });
+      harvested++;
     }
+
+    // 선언 파일을 하나도 회수하지 못하면 산출물 없는 '유령 성공'이 되어 검수 탭이 빈다 —
+    // 조용히 넘기지 말고 실패로 표면화한다(에이전트가 잘못된 경로에 썼을 가능성 안내).
+    if (harvested === 0) {
+      const got = sessionFiles.map((s) => s.filename).join(", ") || "(없음)";
+      const want = declared.map((f) => f.filename).join(", ");
+      await store.updateRun(
+        runId,
+        {
+          status: "failed",
+          error: `산출 파일을 세션에서 회수하지 못했습니다 — 선언: [${want}] / 세션 파일: [${got}]. 에이전트가 /mnt/session/outputs/ 에 파일을 썼는지 확인하세요.`,
+          finished_at: new Date().toISOString(),
+        },
+        { onlyIfStatus: ["succeeded"] },
+      );
+      await store.updateCaseStatus(run.round.case_id, "대기");
+      return { status: "failed" };
+    }
+
     await store.updateRun(runId, { finished_at: new Date().toISOString(), output_tokens: outputTokens, cost_usd: cost });
     if (run.stage === "verify") {
       const report = await store.latestArtifactText(run.round.case_id, "검증보고");

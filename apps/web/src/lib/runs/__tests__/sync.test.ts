@@ -79,6 +79,40 @@ describe("syncRun", () => {
     expect(f.state.caseStatus).toBe("검수 대기");
   });
 
+  it("run-complete인데 선언 파일이 세션에 하나도 없음 → failed (유령 성공 방지)", async () => {
+    const f = fakes([
+      msg(
+        "e1",
+        '```run-complete\n{"files":[{"path":"사건컨텍스트.json","kind":"사건컨텍스트","filename":"사건컨텍스트.json"}]}\n```',
+      ),
+      idle("e2"),
+    ]);
+    // 산출물은 없고 입력 마운트만 보이는 실제 상황 재현
+    (f.runtime.listSessionFiles as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { fileId: "in1", filename: "사건기록.md" },
+    ]);
+    const out = await syncRun({ ...deps(f), harvest: { attempts: 2, delayMs: 0 } }, "run1");
+    expect(out.status).toBe("failed");
+    expect(f.state.artifacts.length).toBe(0);
+    expect(f.state.run.error).toContain("회수하지 못했습니다");
+  });
+
+  it("인덱싱 지연: 첫 조회는 비어도 재시도로 harvest → succeeded", async () => {
+    const f = fakes([
+      msg(
+        "e1",
+        '```run-complete\n{"files":[{"path":"사건컨텍스트.json","kind":"사건컨텍스트","filename":"사건컨텍스트.json"}]}\n```',
+      ),
+      idle("e2"),
+    ]);
+    (f.runtime.listSessionFiles as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce([]) // idle 직후 아직 인덱싱 전
+      .mockResolvedValue([{ fileId: "f1", filename: "사건컨텍스트.json" }]); // 재시도 시 등장
+    const out = await syncRun({ ...deps(f), harvest: { attempts: 3, delayMs: 0 } }, "run1");
+    expect(out.status).toBe("succeeded");
+    expect(f.state.artifacts.length).toBe(1);
+  });
+
   it("verify + FAIL 보고 → 제출 금지", async () => {
     const f = fakes(
       [
