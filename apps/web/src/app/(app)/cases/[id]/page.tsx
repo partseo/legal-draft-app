@@ -11,11 +11,11 @@ import { GateBar } from "@/components/case/gate-bar";
 import { ReviewCta } from "@/components/case/review-cta";
 import { formatRelative } from "@/lib/time";
 import { STAGE_LABELS } from "@/lib/status";
-import { STAGES } from "@/lib/pipeline";
+import { STAGES, rerunKind } from "@/lib/pipeline";
 import { contextJsonToView, mdToSections, renderContextToSections, parseVerifyReport } from "@/lib/artifacts";
 import { getCaseDetail } from "./data";
 import { approveStage, requestChanges } from "./actions";
-import { RunPanel, StartRunButton } from "./run-panel";
+import { RunPanel, StartRunButton, RerunButton } from "./run-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -104,11 +104,16 @@ export default async function CaseDetailPage({
     // 검수 대기(action인데 진행 중 run 없음) 또는 verify 실패 → 해당 단계 탭으로 이동 가능
     const needsReview = state === "action" && !detail.activeRun;
     const linkable = needsReview || (s === "verify" && state === "fail");
+    const rerun = rerunKind(state, detail.startable[s]);
+    // fail 캡션: 인용검증 FAIL은 제출 금지 유지, 실행 실패는 재시도 유도
+    const isVerifyFail = s === "verify" && state === "fail" && detail.verifyHasFail;
+    const failCaption = isVerifyFail ? "검증 실패 · 제출 금지" : rerun ? "실행 실패 · 재시도 가능" : "실행 실패";
     return {
       label: `${STEP_MARK[i]} ${STAGE_LABELS[i]}`,
-      caption: needsReview ? "검수 대기 · 클릭해 검수" : STEP_CAPTION[state],
+      caption: needsReview ? "검수 대기 · 클릭해 검수" : state === "fail" ? failCaption : STEP_CAPTION[state],
       state,
       href: linkable ? `/cases/${id}?tab=${encodeURIComponent(STAGE_TAB[s])}` : undefined,
+      rerunSlot: rerun ? <RerunButton caseId={id} stage={s} stageName={STAGE_LABELS[i]} kind={rerun} /> : undefined,
     };
   });
   const firstRunnable = STAGES.find((s) => detail.stepStates[s] === "runnable" && detail.startable[s]);
