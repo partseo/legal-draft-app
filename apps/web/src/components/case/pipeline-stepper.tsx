@@ -4,8 +4,8 @@ import { Check, ChevronDown, ChevronRight, Lock, Loader2, Play, X, CircleAlert }
 
 export type StepState = "runnable" | "locked" | "running" | "done" | "action" | "fail";
 
-/** href가 있으면 칩을 클릭해 해당 단계 탭으로 이동(검수 유도). runnable은 runSlot이 우선. */
-export type Step = { label: string; caption: string; state: StepState; href?: string };
+/** href가 있으면 칩을 클릭해 해당 단계 탭으로 이동(검수 유도). runnable은 runSlot이 우선. rerunSlot: fail이면 칩 자리, 그 외엔 텍스트 뒤에 렌더. */
+export type Step = { label: string; caption: string; state: StepState; href?: string; rerunSlot?: ReactNode };
 
 function StepChip({ state }: { state: StepState }) {
   switch (state) {
@@ -74,6 +74,8 @@ export function PipelineStepper({
                   실행
                 </a>
               ))
+            ) : s.state === "fail" && s.rerunSlot ? (
+              s.rerunSlot
             ) : s.href ? (
               <Link href={s.href} title="검수하러 가기" className="transition-opacity hover:opacity-80">
                 <StepChip state={s.state} />
@@ -105,6 +107,7 @@ export function PipelineStepper({
                 {s.caption}
               </span>
             </span>
+            {s.state !== "fail" && s.rerunSlot}
           </span>
         </span>
       ))}
