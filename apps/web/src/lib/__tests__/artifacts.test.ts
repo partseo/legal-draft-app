@@ -60,22 +60,65 @@ describe("parseVerifyReport", () => {
     "# 검증보고",
     "| 인용 | 출처 핀 | (a)존재 | (b)내용일치 | (c)현행성 | (d)생사 | 판정 | 사유 |",
     "|---|---|---|---|---|---|---|---|",
-    "| 근로기준법 제27조 | MST:265959 | O | O | O | - | ✅ | |",
-    "| 대법원 2009다12345 | 판례ID:999 | O | X | O | O | ❌ | 판시 불일치 |",
+    "| 근로기준법 제27조 | MST:265959 | ✅ | ✅ | ✅ | - | ✅ | 원문 축자 일치 |",
+    "| 대법원 2009다12345 | 판례ID:999 | ✅ | ❌ | - | ✅ | ❌ | 판시 불일치 |",
     "",
     "**FAIL — 제출 금지**",
   ].join("\n");
 
-  it("표 행과 FAIL을 파싱한다", () => {
+  it("표준 8열 표와 FAIL을 파싱한다", () => {
     const { rows, fail } = parseVerifyReport(MD);
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toMatchObject({ citation: "근로기준법 제27조", kind: "법령", pass: true, result: "✅" });
-    expect(rows[1]).toMatchObject({ citation: "대법원 2009다12345", kind: "판례", pass: false, note: "판시 불일치" });
+    expect(rows[0]).toMatchObject({
+      citation: "근로기준법 제27조",
+      pin: "MST:265959",
+      kind: "법령",
+      state: "pass",
+      note: "원문 축자 일치",
+    });
+    expect(rows[0].checks.map((c) => c.mark)).toEqual(["✅", "✅", "✅", "-"]);
+    expect(rows[0].checks.map((c) => c.label)).toEqual(["존재", "내용일치", "현행성", "생사"]);
+    expect(rows[1]).toMatchObject({ citation: "대법원 2009다12345", kind: "판례", state: "fail", note: "판시 불일치" });
     expect(fail).toBe(true);
   });
 
-  it("표가 없어도 FAIL 판정은 동작", () => {
+  it("번호 열이 붙은 9열 표(실측 산출 형식)도 헤더 이름으로 파싱한다", () => {
+    // 에이전트가 스킬 규정(8열)에 # 번호 열을 추가해 산출한 실제 형식
+    const md = [
+      "| # | 인용 | 출처 핀(서면) | (a)존재 | (b)내용일치 | (c)현행성 | (d)생사 | 판정 | 사유 |",
+      "|---|---|---|---|---|---|---|---|---|",
+      "| 1 | 근로기준법 제27조 ①②(③) | MST:265959, 시행 2025-10-23 [현행] | ✅ | ✅ | ✅ 현행 MST 일치(search_law: 265959) | - | ✅ | `get_law_text(265959, 제27조)` 원문 축자 일치. |",
+      "| 2 | 대법원 2021. 2. 25. 선고 2017다226605 판결 | 판례ID:214235 | ✅ | ✅ | - | ✅ | ✅ | 재조회 결과 법원·선고일·사건번호 정확 일치. |",
+    ].join("\n");
+    const { rows, fail } = parseVerifyReport(md);
+    expect(rows).toHaveLength(2); // 헤더·구분선은 데이터 행으로 나오지 않는다
+    expect(rows[0]).toMatchObject({ citation: "근로기준법 제27조 ①②(③)", kind: "법령", state: "pass" });
+    expect(rows[0].pin).toContain("MST:265959");
+    expect(rows[0].checks[2]).toMatchObject({ label: "현행성", mark: "✅", detail: "✅ 현행 MST 일치(search_law: 265959)" });
+    expect(rows[1]).toMatchObject({ kind: "판례", state: "pass", pin: "판례ID:214235" });
+    expect(rows[1].note).toContain("정확 일치");
+    expect(fail).toBe(false);
+  });
+
+  it("⚠️ 판정은 warn — 실패로 세지 않는다", () => {
+    const md = [
+      "| 인용 | 출처 핀 | (a)존재 | (b)내용일치 | (c)현행성 | (d)생사 | 판정 | 사유 |",
+      "|---|---|---|---|---|---|---|---|",
+      "| 민법 제750조 | MST:1 | ✅ | ✅ | ⚠️ 개정 가능성 | - | ⚠️ | 변호사 확인 필요 |",
+    ].join("\n");
+    const { rows } = parseVerifyReport(md);
+    expect(rows[0].state).toBe("warn");
+    expect(rows[0].checks[2].mark).toBe("⚠");
+  });
+
+  it("표가 없어도 FAIL 판정은 동작, ❌ 행이 있으면 FAIL 문자열 없이도 fail", () => {
     expect(parseVerifyReport("아무 표 없음 **PASS**").fail).toBe(false);
     expect(parseVerifyReport("… FAIL …").fail).toBe(true);
+    const md = [
+      "| 인용 | 출처 핀 | (a)존재 | (b)내용일치 | (c)현행성 | (d)생사 | 판정 | 사유 |",
+      "|---|---|---|---|---|---|---|---|",
+      "| 민법 제9999조 | MST:1 | ❌ | - | - | - | ❌ | 조문 부존재 |",
+    ].join("\n");
+    expect(parseVerifyReport(md).fail).toBe(true);
   });
 });

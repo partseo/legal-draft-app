@@ -79,22 +79,58 @@ export function renderContextToSections(json: unknown): DraftSection[] {
 }
 
 // ── 검증보고 md → VerifyView rows (표 형식: verify-citations SKILL.md §5)
+// 열 위치를 고정하지 않고 헤더 이름으로 매핑한다 — 에이전트가 # 번호 열을 붙이거나
+// "출처 핀(서면)"처럼 헤더 표기를 바꿔도 파싱이 어긋나지 않게.
+const CHECK_LABEL = /^\([a-d]\)/; // (a)존재 · (b)내용일치 · (c)현행성 · (d)생사
+const MARK = /✅|⚠|❌/;
+
+type VerifyCols = {
+  citation: number;
+  pin: number;
+  verdict: number;
+  reason: number;
+  checks: { label: string; idx: number }[];
+};
+
 export function parseVerifyReport(md: string): { rows: VerifyRow[]; fail: boolean } {
   const rows: VerifyRow[] = [];
+  let cols: VerifyCols | null = null;
   for (const line of md.split(/\r?\n/)) {
     if (!line.trim().startsWith("|")) continue;
     const cells = line.split("|").map((c) => c.trim());
-    // 앞뒤 빈 셀 포함 10칸 = 데이터 8열. 헤더·구분선 제외
-    if (cells.length < 10) continue;
-    const [, citation, pin, , , , alive, verdict, note] = cells;
-    if (citation === "인용" || /^-+$/.test(citation) || citation === "") continue;
+    if (cells.every((c) => c === "" || /^:?-{2,}:?$/.test(c))) continue; // 구분선
+    if (cells.includes("인용") && cells.includes("판정")) {
+      cols = {
+        citation: cells.indexOf("인용"),
+        pin: cells.findIndex((c) => c.startsWith("출처")),
+        verdict: cells.indexOf("판정"),
+        reason: cells.findIndex((c) => c === "사유"),
+        checks: cells
+          .map((c, idx) => ({ c, idx }))
+          .filter(({ c }) => CHECK_LABEL.test(c))
+          .map(({ c, idx }) => ({ label: c.replace(CHECK_LABEL, ""), idx })),
+      };
+      continue;
+    }
+    if (!cols) continue;
+    const citation = cells[cols.citation] ?? "";
+    if (!citation) continue;
+    const verdict = cells[cols.verdict] ?? "";
+    const checks = cols.checks.map(({ label, idx }) => {
+      const detail = cells[idx] ?? "";
+      return { label, mark: detail.match(MARK)?.[0] ?? (detail || "-"), detail };
+    });
+    const alive = checks.find((c) => c.label.includes("생사"));
     rows.push({
       citation,
-      kind: alive === "-" ? "법령" : "판례",
-      pass: verdict.includes("✅"),
+      pin: cols.pin >= 0 ? (cells[cols.pin] ?? "") : "",
+      kind: !alive || alive.mark === "-" ? "법령" : "판례",
+      state: verdict.includes("❌") ? "fail" : verdict.includes("⚠") ? "warn" : "pass",
+      checks,
       result: verdict,
-      note: note || pin,
+      note: cols.reason >= 0 ? (cells[cols.reason] ?? "") : "",
     });
   }
-  return { rows, fail: md.includes("FAIL") };
+  // 보고 말미의 FAIL 마커 또는 ❌ 행 존재 — 둘 중 하나라도 실패로 본다
+  return { rows, fail: md.includes("FAIL") || rows.some((r) => r.state === "fail") };
 }

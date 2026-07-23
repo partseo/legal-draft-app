@@ -48,13 +48,26 @@ export const FIXTURE_ISSUES: CheckpointIssue[] = [
   { id: "S3", title: "미지급 임금", claim: "2개월분 체불" },
 ];
 
+const CHECKS_LAW = (mark = "✅") => [
+  { label: "존재", mark, detail: mark },
+  { label: "내용일치", mark, detail: mark },
+  { label: "현행성", mark: "✅", detail: "✅" },
+  { label: "생사", mark: "-", detail: "-" },
+];
+const CHECKS_CASE = (mark = "✅") => [
+  { label: "존재", mark: "✅", detail: "✅" },
+  { label: "내용일치", mark, detail: mark },
+  { label: "현행성", mark: "-", detail: "-" },
+  { label: "생사", mark: "✅", detail: "✅" },
+];
+
 export const FIXTURE_VERIFY: VerifyRow[] = [
-  { citation: "대법원 2019다12345", kind: "판례", pass: true, result: "PASS · 원문 일치", note: "-" },
-  { citation: "근로기준법 제23조", kind: "조문", pass: true, result: "PASS · 원문 일치", note: "-" },
-  { citation: "대법원 2018다55667", kind: "판례", pass: true, result: "PASS · 원문 일치", note: "-" },
-  { citation: "근로기준법 제26조", kind: "조문", pass: true, result: "PASS · 원문 일치", note: "-" },
-  { citation: "근로기준법 제27조", kind: "조문", pass: false, result: "FAIL · 조문 번호 불일치", note: "수정 필요" },
-  { citation: "대법원 2020다67890", kind: "판례", pass: false, result: "FAIL · 판시사항 발췌 불일치", note: "수정 필요" },
+  { citation: "대법원 2019다12345", pin: "판례ID:214235", kind: "판례", state: "pass", checks: CHECKS_CASE(), result: "✅", note: "재조회 결과 법원·선고일·사건번호 정확 일치" },
+  { citation: "근로기준법 제23조", pin: "MST:265959 [현행]", kind: "법령", state: "pass", checks: CHECKS_LAW(), result: "✅", note: "원문 축자 일치" },
+  { citation: "대법원 2018다55667", pin: "판례ID:198765", kind: "판례", state: "pass", checks: CHECKS_CASE(), result: "✅", note: "판시취지 원용 일치" },
+  { citation: "근로기준법 제26조", pin: "MST:265959 [현행]", kind: "법령", state: "pass", checks: CHECKS_LAW(), result: "✅", note: "원문 축자 일치" },
+  { citation: "근로기준법 제27조", pin: "MST:265959 [현행]", kind: "법령", state: "fail", checks: CHECKS_LAW("❌"), result: "❌", note: "서면은 제27조 제3항을 인용했으나 재조회 원문에 해당 항 없음 — 조문 번호 불일치" },
+  { citation: "대법원 2020다67890", pin: "판례ID:230001", kind: "판례", state: "fail", checks: CHECKS_CASE("❌"), result: "❌", note: "서면의 판시사항 발췌가 재조회 원문과 불일치 — 취지 왜곡 가능성" },
 ];
 
 export const FIXTURE_DRAFT_SECTIONS: DraftSection[] = [
