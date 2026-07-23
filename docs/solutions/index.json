@@ -1,0 +1,28 @@
+[
+  {
+    "id": "sol-20260723-001",
+    "title": "Managed Agents mcp_toolset 기본 권한 always_ask — MCP 호출 시 에러 없이 세션 idle",
+    "tags": ["managed-agents", "mcp", "permission-policy", "provisioning"],
+    "category": "bug-fix",
+    "confidence": 0.5,
+    "created": "2026-07-23",
+    "last_reinforced": "2026-07-23",
+    "reinforcement_count": 0,
+    "supersedes": null,
+    "superseded_by": null,
+    "related": []
+  },
+  {
+    "id": "sol-20260723-002",
+    "title": "LLM 산출 마크다운 표는 고정 위치가 아니라 헤더 이름으로 파싱한다",
+    "tags": ["llm-output-parsing", "markdown-table", "robustness"],
+    "category": "pattern",
+    "confidence": 0.5,
+    "created": "2026-07-23",
+    "last_reinforced": "2026-07-23",
+    "reinforcement_count": 0,
+    "supersedes": null,
+    "superseded_by": null,
+    "related": []
+  }
+]
