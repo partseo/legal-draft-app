@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LinkPending } from "@/components/link-pending";
 
 export const CASE_TABS = ["개요", "입력자료", "사건컨텍스트", "리서치", "서면", "검증보고"] as const;
 export type CaseTab = (typeof CASE_TABS)[number];
@@ -28,13 +29,14 @@ export function CaseTabBar({
           <Link
             key={tab}
             href={`${baseHref}?tab=${encodeURIComponent(tab)}`}
-            className={`-mb-px px-0.5 pb-2.5 pt-2.5 text-sm ${
+            className={`-mb-px flex items-center gap-1.5 px-0.5 pb-2.5 pt-2.5 text-sm ${
               isActive
                 ? "border-b-2 border-app-primary font-semibold text-app-primary"
                 : "font-medium text-neutral-500 hover:text-neutral-950"
             }`}
           >
             {tab}
+            <LinkPending className="text-app-primary" />
           </Link>
         );
       })}

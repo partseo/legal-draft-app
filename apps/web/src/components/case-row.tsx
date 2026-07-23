@@ -6,6 +6,7 @@ import { Trash2 } from "lucide-react";
 import { StatusBadge } from "@/components/status-badge";
 import { AvatarBadge } from "@/components/avatar-badge";
 import { MiniStepper } from "@/components/mini-stepper";
+import { LinkPending } from "@/components/link-pending";
 import { caseStatusTone, progressFromStatus } from "@/lib/status";
 import { formatRelative } from "@/lib/time";
 import { deleteCase } from "@/app/(app)/cases/actions";
@@ -59,8 +60,10 @@ export function CaseRow({ c, index }: { c: CaseListItem; index: number }) {
       <Link
         href={`/cases/${c.id}`}
         aria-label={`${c.title} 사건 열기`}
-        className="absolute inset-0"
-      />
+        className="absolute inset-0 z-10"
+      >
+        <LinkPending overlay />
+      </Link>
       <span className="pointer-events-none relative flex-1 truncate text-sm font-medium text-neutral-950">
         {c.title}
       </span>
