@@ -2,15 +2,17 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Scale } from "lucide-react";
+import { Scale, TriangleAlert } from "lucide-react";
 import { createBrowser } from "@/lib/db/browser";
+import { classifyAuthError, type AuthErrorInfo } from "@/lib/auth/login-error";
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<AuthErrorInfo | null>(null);
   const [loading, setLoading] = useState(false);
+  const badCredentials = error?.kind === "credentials";
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -20,7 +22,7 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {
-      setError("이메일 또는 비밀번호가 올바르지 않습니다");
+      setError(classifyAuthError(error));
       return;
     }
     router.replace("/");
@@ -61,11 +63,20 @@ export default function LoginPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className={`rounded-md border bg-white px-3 py-2.5 text-sm outline-none focus:border-app-primary ${
-              error ? "border-st-block" : "border-neutral-200"
+              badCredentials ? "border-st-block" : "border-neutral-200"
             }`}
           />
-          {error && <span className="text-xs text-st-block">{error}</span>}
+          {badCredentials && <span className="text-xs text-st-block">{error.message}</span>}
         </label>
+        {error && !badCredentials && (
+          <div className="flex gap-2 rounded-md bg-st-action-bg p-3 text-st-action">
+            <TriangleAlert className="mt-px size-4 shrink-0" aria-hidden />
+            <div className="flex flex-col gap-1">
+              <span className="text-xs leading-normal">{error.message}</span>
+              {error.detail && <span className="text-[11px] opacity-70">{error.detail}</span>}
+            </div>
+          </div>
+        )}
         <button
           type="submit"
           disabled={loading}
