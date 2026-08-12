@@ -5,6 +5,7 @@ describe("isPublicPath", () => {
   it.each([
     "/login",
     "/api/health",
+    "/api/keepalive",
     "/api/mcp/korean-law/mcp",
     "/_next/static/chunk.js",
     "/favicon.ico",
