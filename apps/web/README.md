@@ -14,8 +14,16 @@
 ## Vercel 배포
 
 - 프로젝트 Root Directory를 `apps/web`으로 설정 (리포의 cases/ 등은 배포에 포함되지 않음)
-- 환경변수: `.env.example`의 모든 키를 Vercel 프로젝트에 등록
+- GitHub 연동됨 — `main`에 push하면 프로덕션 자동 배포. 수동 배포는 `vercel deploy --prod`
+- 환경변수: `.env.example`의 모든 키를 Vercel 프로젝트에 등록. 추가로 `CRON_SECRET`(Cron 보호용)
 - MCP 엔드포인트: `https://<도메인>/api/mcp/korean-law/mcp` (Bearer MCP_SHARED_SECRET)
+
+### Supabase 일시정지 방지
+
+무료 플랜은 무활동이 이어지면 프로젝트를 pause 하고 서브도메인을 DNS에서 회수한다
+(NXDOMAIN → 앱 전체가 로그인 불가). `vercel.json`의 Cron이 매일 03:00 UTC에
+`/api/keepalive`를 호출해 Postgres를 조회한다. 그래도 멈췄다면 Supabase 대시보드에서
+resume 하고 `/api/health`가 200인지 확인한다.
 
 ## 구조
 
