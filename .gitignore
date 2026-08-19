@@ -6,3 +6,5 @@ __pycache__/
 cases/*
 !cases/
 !cases/README.md
+.vercel
+.env*
