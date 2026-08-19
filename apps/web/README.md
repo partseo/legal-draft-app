@@ -21,9 +21,42 @@
 ### Supabase 일시정지 방지
 
 무료 플랜은 무활동이 이어지면 프로젝트를 pause 하고 서브도메인을 DNS에서 회수한다
-(NXDOMAIN → 앱 전체가 로그인 불가). `vercel.json`의 Cron이 매일 03:00 UTC에
-`/api/keepalive`를 호출해 Postgres를 조회한다. 그래도 멈췄다면 Supabase 대시보드에서
-resume 하고 `/api/health`가 200인지 확인한다.
+(NXDOMAIN → 앱 전체가 로그인 불가). Supabase 는 임계값을 공개하지 않고
+["매일 몇 건의 요청"이면 충분하다](https://supabase.com/docs/guides/platform/free-project-pausing)고만 안내한다.
+
+**스케줄러 2중화** — 둘 다 `/api/keepalive` 를 호출한다.
+
+| 경로 | 주기 | 비고 |
+|---|---|---|
+| `.github/workflows/supabase-keepalive.yml` | 하루 3회 (01·09·17 UTC) + `main` push | 주 경로 |
+| `vercel.json` 의 Cron | 하루 1회 (03 UTC) | 이중화. Hobby 는 하루 1회가 상한이고 발화 시각·성공이 보장되지 않는다 |
+
+GitHub Actions 에 시크릿 2개가 필요하다 —
+`KEEPALIVE_URL`(`https://<도메인>/api/keepalive`)과 `CRON_SECRET`(Vercel 것과 동일한 값).
+
+**엔드포인트는 읽지 않고 쓴다.** `keepalive_ping()` 이 `keepalive_heartbeat` 행의
+`last_ping_at`·`ping_count` 를 갱신한다. 읽기 전용이던 이전 구현은 흔적을 남기지 않아
+2026-08 에 일시정지 경고를 받았을 때 "안 돌았는지 / 돌았는데 부족했는지"를 구분할 수
+없었다. 이제는 응답만 보면 된다:
+
+```bash
+curl -H "Authorization: Bearer $CRON_SECRET" https://<도메인>/api/keepalive
+# {"ok":true,"db":true,"mode":"write","degraded":false,
+#  "lastPingAt":"2026-08-19T01:00:04+00:00","pingCount":37}
+```
+
+| 응답 | 뜻 | 할 일 |
+|---|---|---|
+| `mode: "write"` | 정상 | — |
+| `mode: "read"`, `degraded: true` | DB 활동은 했지만 하트비트 기록 실패 | 마이그레이션 미적용 → `npx supabase db push` |
+| HTTP 503, `mode: "none"` | DB 에 아무것도 못 닿음 | `detail` 의 상태코드 확인 (401=service_role 키, 404=경로) |
+
+> ⚠️ GitHub 은 **저장소가 60일간 무활동이면 스케줄 워크플로우를 자동 비활성화**한다.
+> 워크플로우가 `push` 에도 걸려 있지만 커밋 자체가 없으면 소용없다 — 두 달 넘게
+> 손대지 않을 것 같으면 Actions 탭에서 활성 상태를 한 번 확인한다.
+
+이미 멈췄다면 Supabase 대시보드에서 resume 하고, SQL Editor 에서 아무 쿼리나 실행해
+타이머를 리셋한 뒤 위 curl 로 `mode: "write"` 를 확인한다.
 
 ## 구조
 

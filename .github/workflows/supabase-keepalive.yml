@@ -1,0 +1,70 @@
+name: Supabase keepalive
+
+# Vercel Hobby 의 cron 은 하루 1회가 상한이고 "지정 시각의 그 1시간 내 아무 때나"
+# 발화한다. Supabase 는 "매일 몇 건의 요청"을 기준으로 삼으므로 하루 1회는 아슬아슬하다.
+# 여기서 하루 3회를 별도로 때려 Vercel cron 의 발화 여부와 무관하게 활동을 만든다.
+# vercel.json 의 cron 은 이중화로 남겨 둔다.
+
+on:
+  schedule:
+    - cron: "0 1 * * *"
+    - cron: "0 9 * * *"
+    - cron: "0 17 * * *"
+  workflow_dispatch:
+  # 스케줄 워크플로우는 저장소가 60일간 무활동이면 GitHub 이 자동 비활성화한다.
+  # push 마다 한 번 더 돌려 그 타이머도 같이 리셋한다.
+  push:
+    branches: [main]
+
+concurrency:
+  group: supabase-keepalive
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Supabase 하트비트 기록
+        env:
+          KEEPALIVE_URL: ${{ secrets.KEEPALIVE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${KEEPALIVE_URL}" ]; then
+            echo "::error::KEEPALIVE_URL 시크릿이 없다. 예: https://litigation-writer-app.vercel.app/api/keepalive"
+            exit 1
+          fi
+
+          # 일시적 5xx·네트워크 오류로 하루치 핑을 통째로 날리지 않도록 재시도한다.
+          for attempt in 1 2 3; do
+            code=$(curl -sS -o body.json -w '%{http_code}' \
+              --max-time 30 \
+              -H "Authorization: Bearer ${CRON_SECRET}" \
+              "${KEEPALIVE_URL}") && rc=0 || rc=$?
+
+            if [ "${rc}" -eq 0 ] && [ "${code}" = "200" ]; then
+              break
+            fi
+            echo "시도 ${attempt} 실패 (curl rc=${rc:-?}, http=${code:-?})"
+            [ "${attempt}" -lt 3 ] && sleep 20 || true
+          done
+
+          echo "HTTP ${code:-none}"
+          cat body.json || true
+          echo
+
+          if [ "${code:-000}" != "200" ]; then
+            echo "::error::keepalive 실패 — HTTP ${code:-none}. Supabase 에 아무 활동도 남지 않았다."
+            exit 1
+          fi
+
+          # 여기부터는 DB 활동이 일어난 것은 확실하다. 다만 하트비트를 못 남겼으면
+          # 마이그레이션이 원격에 없다는 뜻이라 눈에 띄게 경고한다.
+          mode=$(jq -r '.mode // "unknown"' body.json)
+          if [ "$(jq -r '.degraded // false' body.json)" = "true" ]; then
+            echo "::warning::mode=${mode} · 하트비트 미기록. $(jq -r '.detail // ""' body.json)"
+          else
+            echo "::notice::mode=${mode} · last_ping_at=$(jq -r '.lastPingAt // "?"' body.json) · count=$(jq -r '.pingCount // "?"' body.json)"
+          fi
