@@ -28,7 +28,7 @@
 
 | 경로 | 주기 | 비고 |
 |---|---|---|
-| `.github/workflows/supabase-keepalive.yml` | 하루 3회 (01·09·17 UTC) + `main` push | 주 경로 |
+| `.github/workflows/supabase-keepalive.yml` | 하루 3회 (01·09·17 UTC) + `main` push | 주 경로. 실제 발화는 1~5시간 밀린다 — GitHub 스케줄은 보장이 아니다 |
 | `vercel.json` 의 Cron | 하루 1회 (03 UTC) | 이중화. Hobby 는 하루 1회가 상한이고 발화 시각·성공이 보장되지 않는다 |
 
 GitHub Actions 에 시크릿 2개가 필요하다 —
@@ -50,6 +50,21 @@ curl -H "Authorization: Bearer $CRON_SECRET" https://<도메인>/api/keepalive
 | `mode: "write"` | 정상 | — |
 | `mode: "read"`, `degraded: true` | DB 활동은 했지만 하트비트 기록 실패 | 마이그레이션 미적용 → `npx supabase db push` |
 | HTTP 503, `mode: "none"` | DB 에 아무것도 못 닿음 | `detail` 의 상태코드 확인 (401=service_role 키, 404=경로) |
+
+> ⚠️ `degraded: true` 는 워크플로우를 **실패시키지 않는다** — `::warning` 주석만 남고
+> 실행은 초록불로 끝나 메일이 오지 않는다. 강등은 Actions 탭 주석이나 위 curl 로만 보인다.
+
+**이중화가 실제로 살아 있는지** — Vercel Hobby 는 런타임 로그를 1시간만 보관해서 Cron
+발화 여부를 사후에 로그로 확인할 수 없다. 대신 `ping_count` 증가분에서 역산한다.
+
+```bash
+gh run list --workflow=supabase-keepalive.yml --limit 100 --json databaseId,createdAt
+gh run view <ID> --log | grep -o '{"ok".*}'   # 두 시점의 pingCount 를 뽑는다
+```
+
+`(카운트 증가분) - (그 사이 GitHub 실행 수)` 가 Vercel Cron 발화 수다. 하루 1회에
+가까우면 이중화가 산다. 2026-09-07 실측: 18.06일간 72회 증가, GitHub 54회 → 차액
+18회로 하루 정확히 1회. 두 경로 합쳐 하루 4회, 핑 사이 최대 공백 약 11시간.
 
 > ⚠️ GitHub 은 **저장소가 60일간 무활동이면 스케줄 워크플로우를 자동 비활성화**한다.
 > 워크플로우가 `push` 에도 걸려 있지만 커밋 자체가 없으면 소용없다 — 두 달 넘게
