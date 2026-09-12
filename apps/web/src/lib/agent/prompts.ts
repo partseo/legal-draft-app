@@ -1,4 +1,5 @@
 import type { Enums } from "@/lib/db/database.types";
+import { getDraftSkill } from "@/lib/agent/document-types";
 
 export type RunStage = Enums<"run_stage">;
 export type RoundKind = Enums<"round_kind">;
@@ -6,7 +7,7 @@ export type RoundKind = Enums<"round_kind">;
 export const STAGE_SKILL: Record<RunStage, string> = {
   intake: "case-intake",
   research: "legal-research",
-  draft: "draft-complaint", // 준비서면 라운드는 buildKickoffPrompt에서 draft-brief로 대체
+  draft: "draft-complaint",
   verify: "verify-citations",
 };
 
@@ -108,7 +109,7 @@ export function buildKickoffPrompt(i: {
   roundKind: RoundKind;
   instruction?: string | null;
 }): string {
-  const skill = i.stage === "draft" && i.roundKind === "준비서면" ? "draft-brief" : STAGE_SKILL[i.stage];
+  const skill = i.stage === "draft" ? (getDraftSkill(i.roundKind) ?? STAGE_SKILL[i.stage]) : STAGE_SKILL[i.stage];
   const lines: string[] = [
     `[${KIND_LABEL[i.stage]} 단계 실행]`,
     "",
