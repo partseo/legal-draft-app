@@ -1,5 +1,5 @@
 import type { Enums } from "@/lib/db/database.types";
-import { getDraftSkill } from "@/lib/agent/document-types";
+import { getDraftSkill, getVerifySkill, getDocumentType } from "@/lib/agent/document-types";
 
 export type RunStage = Enums<"run_stage">;
 export type RoundKind = Enums<"round_kind">;
@@ -28,7 +28,7 @@ export const SYSTEM_PROMPT = `너는 "송무서면 생성기"의 웹 실행 에�
 3. 모르면 확인필요 — 불확실한 값은 추측하지 않고 사건컨텍스트 확인필요에 적재하고
    본문에 [변호사 확인 필요] 표기.
 4. 렌더 전 키 검사 — render_서면.py 실행 전 반드시
-   python bundle/templates/check_projection.py <소장|준비서면> <context.json> 으로 OK 확인.
+   python bundle/templates/check_projection.py <소장|준비서면|내용증명|가압류신청서|가처분신청서|강제집행신청서|등기신청서_소유권이전|등기신청서_근저당설정|등기신청서_법인변경|개인회생신청서|파산면책신청서|채권자목록|재산목록|수입지출목록|변제계획안> <context.json> 으로 OK 확인.
 
 ## 진행 상황 서술 (화면에 그대로 표시됨)
 너의 일반 메시지는 변호사 화면의 실행 콘솔에 그대로 표시된다. 도구 호출(bash·파일·검색 등)
@@ -104,12 +104,22 @@ const KIND_LABEL: Record<RunStage, string> = {
   verify: "인용검증",
 };
 
+function resolveSkill(stage: RunStage, roundKind: RoundKind): string {
+  if (stage === "intake") return STAGE_SKILL.intake;
+  if (stage === "research") return STAGE_SKILL.research;
+  if (!getDocumentType(roundKind)) {
+    throw new Error(`알 수 없는 문서 유형입니다: ${roundKind}`);
+  }
+  if (stage === "draft") return getDraftSkill(roundKind)!;
+  return getVerifySkill(roundKind)!;
+}
+
 export function buildKickoffPrompt(i: {
   stage: RunStage;
   roundKind: RoundKind;
   instruction?: string | null;
 }): string {
-  const skill = i.stage === "draft" ? (getDraftSkill(i.roundKind) ?? STAGE_SKILL[i.stage]) : STAGE_SKILL[i.stage];
+  const skill = resolveSkill(i.stage, i.roundKind);
   const lines: string[] = [
     `[${KIND_LABEL[i.stage]} 단계 실행]`,
     "",
