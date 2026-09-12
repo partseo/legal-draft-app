@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { createRouteClient } from "@/lib/db/clients";
 import { AppSidebar } from "@/components/app-sidebar";
 
+export const dynamic = "force-dynamic";
+
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createRouteClient();
   const {

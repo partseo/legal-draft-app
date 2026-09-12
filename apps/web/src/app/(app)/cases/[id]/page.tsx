@@ -313,7 +313,6 @@ export default async function CaseDetailPage({
 
         {(detail.activeRun || detail.openCheckpoint) && (
           <RunPanel
-            caseId={id}
             run={detail.activeRun ? { id: detail.activeRun.id, stage: detail.activeRun.stage, status: detail.activeRun.status } : null}
             checkpoint={
               detail.openCheckpoint

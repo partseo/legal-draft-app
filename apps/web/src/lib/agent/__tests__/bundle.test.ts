@@ -9,7 +9,7 @@ describe("loadBundle", () => {
     expect(b.files).toContain("bundle/rules/인용규칙.md");
     expect(b.files).toContain("bundle/templates/render_서면.py");
     expect(b.files).toContain("bundle/templates/소장_템플릿_docxtpl.docx");
-    expect(b.files.length).toBe(16);
+    expect(b.files.length).toBe(53);
   });
 
   it("tarGz 바이트와 해시가 유효하다", () => {

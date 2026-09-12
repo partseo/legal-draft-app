@@ -9,7 +9,7 @@ const ENV = {
   ANTHROPIC_AGENT_MODEL: "claude-sonnet-5",
   APP_PUBLIC_URL: "https://ex.vercel.app",
   MCP_SHARED_SECRET: "0123456789abcdef0123456789abcdef",
-} as never;
+} satisfies Parameters<typeof createManagedRuntime>[0]["env"];
 
 function settingsDb(row: Record<string, unknown>) {
   const updates: Record<string, unknown>[] = [];

@@ -3,6 +3,7 @@ import { getEnv } from "@/lib/env";
 import { computeHealth } from "@/lib/health";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   let health;

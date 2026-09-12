@@ -104,11 +104,9 @@ export function RerunButton({
 }
 
 export function RunPanel({
-  caseId,
   run,
   checkpoint,
 }: {
-  caseId: string;
   run: { id: string; stage: string; status: string } | null;
   checkpoint: CheckpointDto | null;
 }) {

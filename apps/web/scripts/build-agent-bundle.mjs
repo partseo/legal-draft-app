@@ -17,15 +17,64 @@ const repoRoot = path.resolve(appDir, "..", "..");
 const srcRoot = process.env.AGENT_SRC_DIR ? path.resolve(process.env.AGENT_SRC_DIR) : repoRoot;
 const outPath = path.join(appDir, "src", "lib", "agent", "bundle-data.json");
 
-const SKILLS = ["case-intake", "legal-research", "draft-complaint", "draft-brief", "verify-citations"];
-const RULES = ["법령약칭.md", "사건컨텍스트.schema.json", "요건사실.md", "인용규칙.md", "절차비용.md"];
+const SKILLS = [
+  "case-intake",
+  "check-registration",
+  "draft-bankruptcy",
+  "draft-brief",
+  "draft-complaint",
+  "draft-demand-letter",
+  "draft-execution",
+  "draft-injunction",
+  "draft-registration",
+  "draft-rehabilitation",
+  "legal-research",
+  "verify-citations",
+];
+const RULES = [
+  "등기요건.md",
+  "등록면허세.md",
+  "법령약칭.md",
+  "사건컨텍스트.schema.json",
+  "요건사실.md",
+  "인용규칙.md",
+  "작성자설정.json",
+  "절차비용.md",
+  "회생파산요건.md",
+];
 const TEMPLATES = [
   "check_projection.py",
   "render_서면.py",
+  "가압류신청서_템플릿_docxtpl.docx",
+  "가처분신청서_템플릿_docxtpl.docx",
+  "강제집행신청서_템플릿_docxtpl.docx",
+  "개인회생신청서_템플릿_docxtpl.docx",
+  "내용증명_템플릿_docxtpl.docx",
+  "등기신청서_근저당설정_템플릿_docxtpl.docx",
+  "등기신청서_법인변경_템플릿_docxtpl.docx",
+  "등기신청서_소유권이전_템플릿_docxtpl.docx",
+  "변제계획안_템플릿_docxtpl.docx",
   "소장_템플릿_docxtpl.docx",
+  "수입지출목록_템플릿_docxtpl.docx",
+  "재산목록_템플릿_docxtpl.docx",
   "준비서면_템플릿_docxtpl.docx",
+  "채권자목록_템플릿_docxtpl.docx",
+  "파산면책신청서_템플릿_docxtpl.docx",
+  "context_가압류_예시.json",
+  "context_가처분_예시.json",
+  "context_강제집행_예시.json",
+  "context_개인회생신청서_예시.json",
+  "context_내용증명_예시.json",
+  "context_등기신청서_근저당설정_예시.json",
+  "context_등기신청서_법인변경_예시.json",
+  "context_등기신청서_소유권이전_예시.json",
+  "context_변제계획안_예시.json",
   "context_소장_예시.json",
+  "context_수입지출목록_예시.json",
+  "context_재산목록_예시.json",
   "context_준비서면_예시.json",
+  "context_채권자목록_예시.json",
+  "context_파산면책신청서_예시.json",
 ];
 
 /** [번들 내 경로, 원천 절대경로] 목록 (정렬 고정 → 해시 결정성) */
