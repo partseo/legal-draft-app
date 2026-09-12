@@ -10,6 +10,7 @@ export type RunRow = Tables<"runs">;
 export interface RunStore {
   /** 라운드가 없으면 (kind 소장, seq 1) 생성. 항상 최신 라운드 반환 */
   ensureRound(caseId: string): Promise<{ roundId: string; kind: Enums<"round_kind"> }>;
+  getCaseAuthorMode(caseId: string): Promise<Enums<"author_mode">>;
   getPipelineInput(roundId: string): Promise<{
     runs: Pick<Tables<"runs">, "id" | "stage" | "status" | "started_at" | "finished_at">[];
     reviews: Pick<Tables<"reviews">, "stage" | "decision" | "created_at">[];
@@ -67,6 +68,16 @@ export function createSupabaseRunStore(db: SupabaseClient<Database>): RunStore {
         .single();
       if (error || !created) throw new Error(`라운드 생성 실패: ${error?.message}`);
       return { roundId: created.id, kind: created.kind };
+    },
+
+    async getCaseAuthorMode(caseId) {
+      const { data, error } = await db
+        .from("cases")
+        .select("author_mode")
+        .eq("id", caseId)
+        .single();
+      if (error || !data) return "lawyer" as Enums<"author_mode">;
+      return data.author_mode;
     },
 
     async getPipelineInput(roundId) {

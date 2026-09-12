@@ -243,3 +243,84 @@ export function getDocumentLabel(id: string): string | undefined {
 export function getSelectableDocumentTypes(): readonly { id: string; label: string }[] {
   return DOCUMENT_TYPES.map((t) => ({ id: t.id, label: t.label }));
 }
+
+export function getStagePolicy(id: string): StagePolicy | undefined {
+  return typeMap.get(id)?.stagePolicy;
+}
+
+export type OutputContractResult = {
+  valid: boolean;
+  missing: readonly string[];
+  unknown: readonly string[];
+  duplicate: readonly string[];
+};
+
+export function validateOutputContract(
+  roundKind: string,
+  declaredFilenames: readonly string[],
+): OutputContractResult {
+  const dt = typeMap.get(roundKind);
+  if (!dt) return { valid: false, missing: [], unknown: declaredFilenames, duplicate: [] };
+
+  const expectedSet = new Set(dt.outputs.map((o) => o.filename));
+  const requiredSet = new Set(dt.outputs.filter((o) => o.required).map((o) => o.filename));
+  const seen = new Set<string>();
+  const unknown: string[] = [];
+  const duplicate: string[] = [];
+
+  for (const f of declaredFilenames) {
+    if (!expectedSet.has(f)) {
+      unknown.push(f);
+    } else if (seen.has(f)) {
+      duplicate.push(f);
+    }
+    seen.add(f);
+  }
+
+  const missing = [...requiredSet].filter((r) => !seen.has(r));
+  const valid = missing.length === 0 && unknown.length === 0 && duplicate.length === 0;
+  return { valid, missing, unknown, duplicate };
+}
+
+// ─── Author Mode ─────────────────────────────────────────────────
+
+export const VALID_AUTHOR_MODES = ["lawyer", "judicial_scrivener"] as const;
+export type ValidAuthorMode = (typeof VALID_AUTHOR_MODES)[number];
+export const DEFAULT_AUTHOR_MODE: ValidAuthorMode = "lawyer";
+
+const AUTHOR_MODE_LABELS: Record<ValidAuthorMode, string> = {
+  lawyer: "변호사",
+  judicial_scrivener: "법무사",
+};
+
+const AUTHOR_MODE_CONFIRM_TAG: Record<ValidAuthorMode, string> = {
+  lawyer: "변호사 확인 필요",
+  judicial_scrivener: "법무사 확인 필요",
+};
+
+const AUTHOR_MODE_SENIOR_TITLE: Record<ValidAuthorMode, string> = {
+  lawyer: "시니어 변호사 송무 조언",
+  judicial_scrivener: "시니어 법무사 송무 조언",
+};
+
+export function isValidAuthorMode(v: unknown): v is ValidAuthorMode {
+  return typeof v === "string" && VALID_AUTHOR_MODES.includes(v as ValidAuthorMode);
+}
+
+export function getAuthorModeLabel(mode: ValidAuthorMode): string {
+  return AUTHOR_MODE_LABELS[mode];
+}
+
+export function getConfirmTag(mode: ValidAuthorMode): string {
+  return AUTHOR_MODE_CONFIRM_TAG[mode];
+}
+
+export function getSeniorAdviceTitle(mode: ValidAuthorMode): string {
+  return AUTHOR_MODE_SENIOR_TITLE[mode];
+}
+
+export function isAuthorModeSupported(docTypeId: string, mode: ValidAuthorMode): boolean {
+  const dt = typeMap.get(docTypeId);
+  if (!dt) return false;
+  return dt.supportedAuthorModes.includes(mode);
+}

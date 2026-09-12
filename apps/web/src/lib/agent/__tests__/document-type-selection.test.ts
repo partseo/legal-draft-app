@@ -142,7 +142,62 @@ describe("P5.5-5C: Document Type Selection", () => {
     });
   });
 
-  // ─── 5. Registry alignment ─────────────────────────────────────────
+  // ─── 5. Fail-Closed validation (P5.5-5C.1) ─────────────────────────
+
+  describe("roundKind validation (fail-closed)", () => {
+    it("missing input → defaults to 소장", () => {
+      const raw = null;
+      const kindStr = raw == null || String(raw).trim() === "" ? DEFAULT_ROUND_KIND : String(raw).trim();
+      expect(kindStr).toBe("소장");
+      expect(getDocumentType(kindStr)).toBeDefined();
+    });
+
+    it("empty string → defaults to 소장", () => {
+      const raw = "";
+      const kindStr = raw == null || String(raw).trim() === "" ? DEFAULT_ROUND_KIND : String(raw).trim();
+      expect(kindStr).toBe("소장");
+    });
+
+    it("all 11 valid types accepted", () => {
+      for (const t of listDocumentTypes()) {
+        expect(getDocumentType(t.id)).toBeDefined();
+      }
+    });
+
+    it("explicit unknown value rejected", () => {
+      expect(getDocumentType("존재하지않는유형")).toBeUndefined();
+    });
+
+    it("sub-output 채권자목록 rejected", () => {
+      expect(getDocumentType("채권자목록")).toBeUndefined();
+    });
+
+    it("sub-output 재산목록 rejected", () => {
+      expect(getDocumentType("재산목록")).toBeUndefined();
+    });
+
+    it("sub-output 수입지출목록 rejected", () => {
+      expect(getDocumentType("수입지출목록")).toBeUndefined();
+    });
+
+    it("sub-output 변제계획안 rejected", () => {
+      expect(getDocumentType("변제계획안")).toBeUndefined();
+    });
+
+    it("소장 regression — accepted and routable", () => {
+      const dt = getDocumentType("소장");
+      expect(dt).toBeDefined();
+      expect(dt!.draftSkill).toBe("draft-complaint");
+    });
+
+    it("준비서면 regression — accepted and routable", () => {
+      const dt = getDocumentType("준비서면");
+      expect(dt).toBeDefined();
+      expect(dt!.draftSkill).toBe("draft-brief");
+    });
+  });
+
+  // ─── 6. Registry alignment ─────────────────────────────────────────
 
   describe("registry alignment", () => {
     it("getSelectableDocumentTypes uses listDocumentTypes (not a separate array)", () => {

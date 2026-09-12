@@ -11,6 +11,7 @@ import {
 } from "@/lib/pipeline";
 import type { StepState } from "@/components/case/pipeline-stepper";
 import type { Tables, Enums } from "@/lib/db/database.types";
+import { getStagePolicy } from "@/lib/agent/document-types";
 
 export type CaseDetail = {
   roundId: string;
@@ -49,7 +50,8 @@ export async function getCaseDetail(caseId: string): Promise<CaseDetail> {
     artifacts[kind] = { filename: latest.filename, version: latest.version, storagePath: latest.storage_path, text };
   }
   const verifyHasFail = artifacts["검증보고"]?.text?.includes("FAIL") ?? false;
-  const input: PipelineInput = { ...pipe, verifyHasFail };
+  const sp = getStagePolicy(round.kind);
+  const input: PipelineInput = { ...pipe, verifyHasFail, stagePolicy: sp };
 
   const { data: activeRuns } = await db
     .from("runs")

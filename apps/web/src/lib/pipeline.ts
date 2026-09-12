@@ -4,10 +4,13 @@ import type { StepState } from "@/components/case/pipeline-stepper";
 export type RunStage = Enums<"run_stage">;
 export const STAGES: RunStage[] = ["intake", "research", "draft", "verify"];
 
+export type StagePolicyValue = "required" | "optional" | "skipped" | "conditional";
+
 export type PipelineInput = {
   runs: Pick<Tables<"runs">, "id" | "stage" | "status" | "started_at" | "finished_at">[];
   reviews: Pick<Tables<"reviews">, "stage" | "decision" | "created_at">[];
   verifyHasFail: boolean;
+  stagePolicy?: Partial<Record<RunStage, StagePolicyValue>>;
 };
 
 function latestRun(input: PipelineInput, stage: RunStage) {
@@ -21,10 +24,25 @@ function isApproved(input: PipelineInput, stage: RunStage): boolean {
   return input.reviews.some((v) => v.stage === stage && v.decision === "승인" && v.created_at > run.started_at);
 }
 
+function isPrevSatisfied(input: PipelineInput, stageIndex: number): boolean {
+  if (stageIndex === 0) return true;
+  const prev = STAGES[stageIndex - 1];
+  const policy = input.stagePolicy?.[prev] ?? "required";
+  if (policy === "skipped") return true;
+  if (isApproved(input, prev)) return true;
+  if ((policy === "optional" || policy === "conditional") && !latestRun(input, prev)) return true;
+  return false;
+}
+
 export function deriveStepStates(input: PipelineInput): Record<RunStage, StepState> {
   const out = {} as Record<RunStage, StepState>;
   for (let i = 0; i < STAGES.length; i++) {
     const stage = STAGES[i];
+    const policy = input.stagePolicy?.[stage] ?? "required";
+    if (policy === "skipped") {
+      out[stage] = "done";
+      continue;
+    }
     const run = latestRun(input, stage);
     if (run && run.status === "running") out[stage] = "running";
     else if (run && run.status === "waiting_checkpoint") out[stage] = "action";
@@ -33,14 +51,15 @@ export function deriveStepStates(input: PipelineInput): Record<RunStage, StepSta
       if (stage === "verify" && input.verifyHasFail) out[stage] = "fail";
       else out[stage] = isApproved(input, stage) ? "done" : "action";
     } else {
-      const prevOk = i === 0 || isApproved(input, STAGES[i - 1]);
-      out[stage] = prevOk ? "runnable" : "locked";
+      out[stage] = isPrevSatisfied(input, i) ? "runnable" : "locked";
     }
   }
   return out;
 }
 
 export function canStartStage(input: PipelineInput, stage: RunStage): boolean {
+  const policy = input.stagePolicy?.[stage] ?? "required";
+  if (policy === "skipped") return false;
   const busy = input.runs.some((r) => r.status === "running" || r.status === "waiting_checkpoint");
   if (busy) return false;
   const state = deriveStepStates(input)[stage];

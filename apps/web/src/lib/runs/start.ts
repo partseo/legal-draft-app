@@ -1,6 +1,8 @@
 import type { AgentRuntime, Mount } from "@/lib/agent/adapter";
 import { loadBundle } from "@/lib/agent/bundle";
 import { buildKickoffPrompt } from "@/lib/agent/prompts";
+import type { ValidAuthorMode } from "@/lib/agent/document-types";
+import { getStagePolicy } from "@/lib/agent/document-types";
 import { canStartStage } from "@/lib/pipeline";
 import { buildMounts } from "@/lib/runs/mounts";
 import type { RunStore, RunStage } from "@/lib/runs/store";
@@ -11,10 +13,12 @@ export async function startRun(
 ): Promise<{ runId: string }> {
   const { store, runtime } = deps;
   const round = await store.ensureRound(i.caseId);
+  const authorMode = await store.getCaseAuthorMode(i.caseId);
   const pipe = await store.getPipelineInput(round.roundId);
   const verifyText = await store.latestArtifactText(i.caseId, "검증보고");
   const verifyHasFail = verifyText !== null && verifyText.includes("FAIL");
-  if (!canStartStage({ ...pipe, verifyHasFail }, i.stage)) {
+  const sp = getStagePolicy(round.kind);
+  if (!canStartStage({ ...pipe, verifyHasFail, stagePolicy: sp }, i.stage)) {
     throw new Error(`실행할 수 없는 단계입니다: ${i.stage} (선행 단계 승인 또는 진행 중 실행을 확인하세요)`);
   }
 
@@ -43,7 +47,7 @@ export async function startRun(
     await store.updateRun(runId, { agent_session_id: sessionId });
     await runtime.sendMessage(
       sessionId,
-      buildKickoffPrompt({ stage: i.stage, roundKind: round.kind, instruction: i.instruction }),
+      buildKickoffPrompt({ stage: i.stage, roundKind: round.kind, instruction: i.instruction, authorMode: authorMode as ValidAuthorMode }),
     );
     await store.updateCaseStatus(i.caseId, "실행중");
     return { runId };

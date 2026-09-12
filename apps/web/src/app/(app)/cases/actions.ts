@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createRouteClient, createServiceClient } from "@/lib/db/clients";
 import { inputStorageKey } from "@/lib/storage-key";
-import { getDocumentType, DEFAULT_ROUND_KIND } from "@/lib/agent/document-types";
+import { getDocumentType, DEFAULT_ROUND_KIND, isValidAuthorMode, DEFAULT_AUTHOR_MODE } from "@/lib/agent/document-types";
 import type { Enums } from "@/lib/db/database.types";
 
 const ALLOWED_EXT = [".md", ".txt", ".pdf"];
@@ -23,8 +23,20 @@ export async function createCase(
 
   const title = String(formData.get("title") ?? "").trim();
   const assignee = String(formData.get("assignee") ?? "");
-  const rawKind = String(formData.get("roundKind") ?? DEFAULT_ROUND_KIND);
-  const roundKind: Enums<"round_kind"> = (getDocumentType(rawKind) ? rawKind : DEFAULT_ROUND_KIND) as Enums<"round_kind">;
+  const rawKind = formData.get("roundKind");
+  const kindStr = rawKind == null || String(rawKind).trim() === "" ? DEFAULT_ROUND_KIND : String(rawKind).trim();
+  if (!getDocumentType(kindStr)) {
+    return { error: `알 수 없는 문서 유형입니다: ${kindStr}` };
+  }
+  const roundKind = kindStr as Enums<"round_kind">;
+
+  const rawAuthor = formData.get("authorMode");
+  const authorStr = rawAuthor == null || String(rawAuthor).trim() === "" ? DEFAULT_AUTHOR_MODE : String(rawAuthor).trim();
+  if (!isValidAuthorMode(authorStr)) {
+    return { error: `허용되지 않는 작성자 유형입니다: ${authorStr}` };
+  }
+  const authorMode = authorStr as Enums<"author_mode">;
+
   const pasted = String(formData.get("pasted") ?? "").trim();
   const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
 
@@ -38,7 +50,7 @@ export async function createCase(
 
   const { data: caseRow, error: caseErr } = await supabase
     .from("cases")
-    .insert({ title, assignee: assignee || null, created_by: user.id })
+    .insert({ title, assignee: assignee || null, created_by: user.id, author_mode: authorMode })
     .select("id")
     .single();
   if (caseErr || !caseRow) return { error: `사건 생성 실패: ${caseErr?.message}` };
@@ -46,7 +58,10 @@ export async function createCase(
   const { error: roundErr } = await supabase
     .from("rounds")
     .insert({ case_id: caseRow.id, kind: roundKind, seq: 1 });
-  if (roundErr) return { error: `라운드 생성 실패: ${roundErr.message}` };
+  if (roundErr) {
+    await supabase.from("cases").delete().eq("id", caseRow.id);
+    return { error: `라운드 생성 실패: ${roundErr.message}` };
+  }
 
   const uploads: { name: string; body: Blob | string; contentType: string }[] = [];
   if (pasted) uploads.push({ name: "붙여넣기_메모.md", body: pasted, contentType: "text/markdown" });

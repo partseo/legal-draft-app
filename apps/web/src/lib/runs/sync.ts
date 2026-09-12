@@ -1,6 +1,7 @@
 import type { AgentRuntime, RuntimeEvent } from "@/lib/agent/adapter";
 import { parseCheckpoint, parseRunComplete } from "@/lib/agent/protocol";
 import { computeRunningMs, estimateRunCost, estimateTokens } from "@/lib/agent/usage";
+import { validateOutputContract } from "@/lib/agent/document-types";
 import type { RunStore } from "@/lib/runs/store";
 
 export type RunDeps = {
@@ -91,6 +92,27 @@ export async function syncRun(deps: RunDeps, runId: string): Promise<{ status: s
   if (run.status === "waiting_checkpoint") return { status: run.status }; // 응답 대기 중 idle은 정상
 
   if (complete) {
+    if (run.stage === "draft") {
+      const oc = validateOutputContract(run.round.kind, complete.files.map((f) => f.filename));
+      if (!oc.valid) {
+        const parts: string[] = [];
+        if (oc.missing.length > 0) parts.push(`누락: [${oc.missing.join(", ")}]`);
+        if (oc.unknown.length > 0) parts.push(`미등록: [${oc.unknown.join(", ")}]`);
+        if (oc.duplicate.length > 0) parts.push(`중복: [${oc.duplicate.join(", ")}]`);
+        await store.updateRun(
+          runId,
+          {
+            status: "failed",
+            error: `산출물 계약 위반 — ${parts.join(" / ")}`,
+            finished_at: new Date().toISOString(),
+          },
+          { onlyIfStatus: ACTIVE },
+        );
+        await store.updateCaseStatus(run.round.case_id, "대기");
+        return { status: "failed" };
+      }
+    }
+
     const claimed = await store.updateRun(runId, { status: "succeeded" }, { onlyIfStatus: ["running"] });
     if (!claimed) return { status: (await store.getRun(runId)).status }; // 경쟁 호출이 선점
 

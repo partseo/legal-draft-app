@@ -17,6 +17,7 @@ function fakes(over: Partial<RunStore> = {}) {
     updateRun: track("updateRun", true),
     latestArtifactText: track("latestArtifactText", null),
     updateCaseStatus: track("updateCaseStatus", undefined),
+    getCaseAuthorMode: track("getCaseAuthorMode", "lawyer"),
     ...over,
   } as unknown as RunStore;
   const runtime = {

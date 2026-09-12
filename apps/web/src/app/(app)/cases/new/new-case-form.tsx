@@ -4,7 +4,7 @@ import { useActionState, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileText, Upload, X } from "lucide-react";
 import { createCase, type CreateCaseState } from "../actions";
-import { getSelectableDocumentTypes, DEFAULT_ROUND_KIND } from "@/lib/agent/document-types";
+import { getSelectableDocumentTypes, DEFAULT_ROUND_KIND, VALID_AUTHOR_MODES, DEFAULT_AUTHOR_MODE, getAuthorModeLabel } from "@/lib/agent/document-types";
 
 export function NewCaseForm({ members }: { members: { id: string; display_name: string }[] }) {
   const router = useRouter();
@@ -52,6 +52,21 @@ export function NewCaseForm({ members }: { members: { id: string; display_name: 
           {getSelectableDocumentTypes().map((t) => (
             <option key={t.id} value={t.id}>
               {t.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="flex flex-col gap-2">
+        <span className="text-sm font-medium text-neutral-950">작성자 유형</span>
+        <select
+          name="authorMode"
+          className="appearance-none rounded-lg border border-neutral-200 bg-white px-3 py-[11px] text-sm outline-none"
+          defaultValue={DEFAULT_AUTHOR_MODE}
+        >
+          {VALID_AUTHOR_MODES.map((m) => (
+            <option key={m} value={m}>
+              {getAuthorModeLabel(m)}
             </option>
           ))}
         </select>
