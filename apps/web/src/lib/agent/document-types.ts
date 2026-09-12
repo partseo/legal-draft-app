@@ -233,3 +233,13 @@ export function getRequiredOutputs(id: string): readonly OutputDefinition[] | un
 export function isExistingWebDocumentType(id: string): boolean {
   return typeMap.get(id)?.existingWebSupport === true;
 }
+
+export const DEFAULT_ROUND_KIND = "소장" as const;
+
+export function getDocumentLabel(id: string): string | undefined {
+  return typeMap.get(id)?.label;
+}
+
+export function getSelectableDocumentTypes(): readonly { id: string; label: string }[] {
+  return DOCUMENT_TYPES.map((t) => ({ id: t.id, label: t.label }));
+}

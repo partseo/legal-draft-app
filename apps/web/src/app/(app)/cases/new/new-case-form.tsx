@@ -4,6 +4,7 @@ import { useActionState, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileText, Upload, X } from "lucide-react";
 import { createCase, type CreateCaseState } from "../actions";
+import { getSelectableDocumentTypes, DEFAULT_ROUND_KIND } from "@/lib/agent/document-types";
 
 export function NewCaseForm({ members }: { members: { id: string; display_name: string }[] }) {
   const router = useRouter();
@@ -36,6 +37,21 @@ export function NewCaseForm({ members }: { members: { id: string; display_name: 
           {members.map((m) => (
             <option key={m.id} value={m.id}>
               {m.display_name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="flex flex-col gap-2">
+        <span className="text-sm font-medium text-neutral-950">문서 유형</span>
+        <select
+          name="roundKind"
+          className="appearance-none rounded-lg border border-neutral-200 bg-white px-3 py-[11px] text-sm outline-none"
+          defaultValue={DEFAULT_ROUND_KIND}
+        >
+          {getSelectableDocumentTypes().map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.label}
             </option>
           ))}
         </select>

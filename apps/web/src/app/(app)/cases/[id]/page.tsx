@@ -13,6 +13,7 @@ import { formatRelative } from "@/lib/time";
 import { STAGE_LABELS } from "@/lib/status";
 import { STAGES, rerunKind } from "@/lib/pipeline";
 import { contextJsonToView, mdToSections, renderContextToSections, parseVerifyReport } from "@/lib/artifacts";
+import { getDocumentLabel } from "@/lib/agent/document-types";
 import { getCaseDetail } from "./data";
 import { approveStage, requestChanges } from "./actions";
 import { RunPanel, StartRunButton, RerunButton } from "./run-panel";
@@ -278,7 +279,7 @@ export default async function CaseDetailPage({
                   />
                 )}
                 <DraftView
-                  docTitle={detail.roundKind === "소장" ? "소장 초안" : "준비서면 초안"}
+                  docTitle={`${getDocumentLabel(detail.roundKind) ?? detail.roundKind} 초안`}
                   sections={
                     detail.artifacts["context_json"]?.text
                       ? renderContextToSections(safeJson(detail.artifacts["context_json"].text))

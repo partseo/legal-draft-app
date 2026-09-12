@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createRouteClient, createServiceClient } from "@/lib/db/clients";
 import { inputStorageKey } from "@/lib/storage-key";
+import { getDocumentType, DEFAULT_ROUND_KIND } from "@/lib/agent/document-types";
+import type { Enums } from "@/lib/db/database.types";
 
 const ALLOWED_EXT = [".md", ".txt", ".pdf"];
 
@@ -21,6 +23,8 @@ export async function createCase(
 
   const title = String(formData.get("title") ?? "").trim();
   const assignee = String(formData.get("assignee") ?? "");
+  const rawKind = String(formData.get("roundKind") ?? DEFAULT_ROUND_KIND);
+  const roundKind: Enums<"round_kind"> = (getDocumentType(rawKind) ? rawKind : DEFAULT_ROUND_KIND) as Enums<"round_kind">;
   const pasted = String(formData.get("pasted") ?? "").trim();
   const files = formData.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
 
@@ -38,6 +42,11 @@ export async function createCase(
     .select("id")
     .single();
   if (caseErr || !caseRow) return { error: `사건 생성 실패: ${caseErr?.message}` };
+
+  const { error: roundErr } = await supabase
+    .from("rounds")
+    .insert({ case_id: caseRow.id, kind: roundKind, seq: 1 });
+  if (roundErr) return { error: `라운드 생성 실패: ${roundErr.message}` };
 
   const uploads: { name: string; body: Blob | string; contentType: string }[] = [];
   if (pasted) uploads.push({ name: "붙여넣기_메모.md", body: pasted, contentType: "text/markdown" });
