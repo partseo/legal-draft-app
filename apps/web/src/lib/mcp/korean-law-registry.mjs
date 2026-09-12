@@ -1,5 +1,5 @@
 /**
- * VENDORED from korean-law-mcp@4.4.4 build/tool-registry.js (MIT, © Chris).
+ * VENDORED from korean-law-mcp@4.13.0 build/tool-registry.js (MIT, © Chris).
  * 원본은 패키지 exports 맵에 없어 서브패스 import가 불가하여 복사함.
  * 수정 금지 — 갱신은 scripts/vendor-korean-law-registry.mjs 재실행으로만.
  */
@@ -10,10 +10,15 @@
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { formatToolError } from "korean-law-mcp/lib/errors";
+import { RequestExecutionBudget, readExecutionLimits } from "korean-law-mcp/lib/execution-limits";
+import { truncateResponse } from "korean-law-mcp/lib/schemas";
+import { getRequestSignal, requestContext, runWithRequestContext, throwIfRequestCancelled } from "korean-law-mcp/lib/session-state";
 import { discoverTools, DiscoverToolsSchema, executeTool, ExecuteToolSchema, setAllToolsRef } from "korean-law-mcp/tools/meta-tools";
+import { V3_EXPOSED } from "korean-law-mcp/lib/tool-profiles";
 import { searchDecisions, SearchDecisionsSchema, getDecisionText, GetDecisionTextSchema } from "korean-law-mcp/tools/unified-decisions";
 // Tool imports
 import { searchLaw, SearchLawSchema } from "korean-law-mcp/tools/search";
+import { searchLawBulk, SearchLawBulkSchema } from "korean-law-mcp/tools/search-bulk";
 import { getLawText, GetLawTextSchema } from "korean-law-mcp/tools/law-text";
 import { parseJoCode, ParseJoCodeSchema, getLawAbbreviations, GetLawAbbreviationsSchema } from "korean-law-mcp/tools/utils";
 import { compareOldNew, CompareOldNewSchema } from "korean-law-mcp/tools/comparison";
@@ -23,6 +28,7 @@ import { getArticleDetail, GetArticleDetailSchema } from "korean-law-mcp/tools/a
 import { getAnnexes, GetAnnexesSchema } from "korean-law-mcp/tools/annex";
 import { getOrdinance, GetOrdinanceSchema } from "korean-law-mcp/tools/ordinance";
 import { searchOrdinance, SearchOrdinanceSchema } from "korean-law-mcp/tools/ordinance-search";
+import { ordinanceRadar, OrdinanceRadarSchema } from "korean-law-mcp/tools/ordinance-radar";
 import { compareArticles, CompareArticlesSchema } from "korean-law-mcp/tools/article-compare";
 import { getLawTree, GetLawTreeSchema } from "korean-law-mcp/tools/law-tree";
 import { searchAll, SearchAllSchema } from "korean-law-mcp/tools/search-all";
@@ -72,13 +78,19 @@ export const allTools = [
     // === 법령 검색/조회 ===
     {
         name: "search_law",
-        description: "[법령검색] 법령명 키워드검색 → lawId, mst 획득. 약칭 자동변환. 법령 조회 전 식별자 확보용.",
+        description: "[법령검색] 법령명·조례명·행정규칙명 키워드검색 → lawId, mst 획득. 지자체 조례·규칙(자치법규), 훈령·예규·고시(행정규칙)도 검색 — 0건 시 자치법규/행정규칙으로 자동 폴백(예: '광진구 복무조례', '외국환거래규정'). 약칭 자동변환. 제명변경·시행예정 개정 자동 병기. 폐지된 법령·행정규칙은 폐지 사실과 후속(통합) 규정을 자동 안내. 법령·조례·행정규칙 조회 전 식별자 확보용. 여러 법령의 개정 여부를 한 번에 확인(준법 등록부 감시)하려면 execute_tool(tool_name=\"search_law_bulk\").",
         schema: SearchLawSchema,
         handler: searchLaw
     },
     {
+        name: "search_law_bulk",
+        description: "[법령검색] 법령명 배열을 한 번에 조회 — 건당 법령ID·MST·시행일·시행예정만 컴팩트 반환(부분매칭 목록·안내문 없음). previous={법령ID:직전MST} 를 주면 MST가 달라진 법령만 돌려주는 diff 모드 — MST는 개정마다 바뀌므로 그 자체가 변경 감지 키다. ISO 준법 등록부처럼 수십 건의 개정 여부를 주기적으로 확인할 때 search_law 건당 호출 대신 사용.",
+        schema: SearchLawBulkSchema,
+        handler: searchLawBulk
+    },
+    {
         name: "get_law_text",
-        description: "[법령조회] 조문 전문 조회. mst/lawId 필수, jo로 특정 조문만 가능.",
+        description: "[법령조회] 조문 전문 조회. mst/lawId 필수, jo로 특정 조문만 가능 — jo는 '제148조의2' 같은 자연어 조문 표기를 그대로 받는다(권장). 6자리 JO 코드를 직접 쓰려면 조번호 4자리 zero-pad + 의X 2자리: 제10조의2→001002, 제234조의2→023402(234002 아님).",
         schema: GetLawTextSchema,
         handler: getLawText
     },
@@ -109,7 +121,7 @@ export const allTools = [
     // === 행정규칙 ===
     {
         name: "search_admin_rule",
-        description: "[행정규칙] 훈령/예규/고시/지침 검색. knd 파라미터로 종류 필터 가능(1=훈령, 2=예규, 3=고시).",
+        description: "[행정규칙] 훈령/예규/고시/지침 검색. knd 파라미터로 종류 필터 가능(1=훈령, 2=예규, 3=고시). 현행 0건이면 연혁을 자동 추적해 폐지(폐지사유·후속 통합 규정)·제명변경을 안내.",
         schema: SearchAdminRuleSchema,
         handler: searchAdminRule
     },
@@ -137,6 +149,12 @@ export const allTools = [
         description: "[자치법규] 조례/규칙 전문 조회. jo 파라미터로 특정 조문 본문 조회 가능.",
         schema: GetOrdinanceSchema,
         handler: getOrdinance
+    },
+    {
+        name: "ordinance_radar",
+        description: "[자치법규] 조례 정비 레이더 — 조례가 인용한 근거 상위법령(법률/시행령/시행규칙)을 본문에서 추출하고, 각 상위법의 현행 시행일과 조례 시행일을 대조해 '상위법이 조례 시행 이후 개정됨 → 정비 검토 대상'을 자동 플래그. 조례 담당 공무원의 상위법 개정 추적·조례 정비 판단용. ordinSeq(또는 id)나 ordinanceName 중 하나 지정.",
+        schema: OrdinanceRadarSchema,
+        handler: ordinanceRadar
     },
     // === 법령-자치법규 연계 ===
     {
@@ -561,13 +579,13 @@ export const allTools = [
     // 원본 도구는 allTools에 유지 — 직접 CallTool/execute_tool 하위호환.
     {
         name: "legal_research",
-        description: "[⛓리서치] 다단계 법령 리서치 통합 — 여러 API를 병렬로 엮는 복합 질문 전용. task: full_research=도메인·법령명 불명확한 자연어 질문 폴백(기본값, 예 '음주운전 처벌 기준') | law_system=법률·시행령·시행규칙 3단+위임+별표(예 '관세법 체계') | action_basis=처분·허가의 법적 근거+해석례+판례+행심(예 '영업정지 근거') | dispute_prep=불복·소송 준비, 판례+심판례+도메인 결정례(예 '과세처분 불복') | amendment_track=개정 이력+신구대조+연혁(예 '2023년 개정 뭐 바뀜') | ordinance_compare=조례 전국 비교+상위법 적합성(예 '서울시 주차 조례') | procedure_detail=절차·수수료·별표서식(예 '건축허가 절차') | document_review=계약서·약관 조항 리스크+근거법령(text 필수). 단일 조회로 답이 되면 search_law/get_law_text 쓸 것.",
+        description: "[⛓리서치] 다단계 법령 리서치 통합 — 여러 API를 병렬로 엮는 복합 질문 전용. task: full_research=도메인·법령명 불명확한 자연어 질문 폴백(기본값, 예 '음주운전 처벌 기준') | law_system=법률·시행령·시행규칙 3단+위임+별표(예 '관세법 체계') | action_basis=처분·허가의 법적 근거+해석례+판례+행심(예 '영업정지 근거') | dispute_prep=불복·소송 준비, 판례+심판례+도메인 결정례(예 '과세처분 불복') | amendment_track=개정 이력+신구대조+연혁(예 '2023년 개정 뭐 바뀜') | ordinance_compare=조례 전국 비교+상위법 적합성(예 '서울시 주차 조례') | procedure_detail=절차·수수료·별표서식(예 '건축허가 절차') | document_review=계약서·약관 조항 리스크+근거법령(text 필수). scenario(선택): 확장 시나리오 — time_travel(두 시점 본문 diff)·timeline·penalty·action_plan·delegation·impact·compliance·customs·manual. 미지정 시 쿼리에서 자동 감지되며, task별 호환 조합은 scenario 파라미터 설명 참조. 단일 조회로 답이 되면 search_law/get_law_text 쓸 것.",
         schema: LegalResearchSchema,
         handler: legalResearch
     },
     {
         name: "legal_analysis",
-        description: "[정밀분석] 검증·분석 4종 통합. mode: verify_citations=텍스트 속 조문 인용('민법 제750조' 등)이 실존하는지 법제처 DB 교차검증, LLM 환각 방지(text 필수) | cite_check=판례 생사 확인 — 사건번호로 후속 인용 역추적+변경·폐기 감지, 한국형 Citator(caseNumber 필수) | applicable_law=사건 시점에 시행되던 법령 버전+그 시점 조문+부칙 경과조치, 행위시법 판단(lawName+date 필수, jo 선택) | impact_map=한 조문을 인용한 판례·헌재·해석례·행심·조례 역방향 그래프+mermaid(lawName+jo 필수)",
+        description: "[정밀분석] 검증·분석 4종 통합. mode: verify_citations=텍스트 속 법령 조문·판례 인용('민법 제750조', '대법원 2013다61381' 등)이 실존하는지 법제처 DB 교차검증, LLM 환각 방지 — 판례는 실존불가/미확인 구분(text 필수) | cite_check=판례 생사 확인 — 사건번호로 후속 인용 역추적+변경·폐기 감지, 한국형 Citator(caseNumber 필수) | applicable_law=사건 시점에 시행되던 법령 버전+그 시점 조문+부칙 경과조치, 행위시법 판단(lawName+date 필수, jo 선택) | impact_map=한 조문을 인용한 판례·헌재·해석례·행심·조례 역방향 그래프+mermaid(lawName+jo 필수, jo는 '제103조'·'103조'·JO 6자리 코드 '010300' 모두 수용)",
         schema: LegalAnalysisSchema,
         handler: legalAnalysis
     },
@@ -687,7 +705,7 @@ export const allTools = [
 /**
  * Zod 스키마 → MCP 광고용 JSON Schema 변환 (apiKey 숨김 포함)
  */
-export function toMcpInputSchema(schema) {
+function toMcpInputSchema(schema) {
     // Zod v4: z.toJSONSchema()로 직접 변환 (zod-to-json-schema는 Zod v4 미지원)
     // io:"input" 필수 — 기본 "output" 모드는 .default() 필드를 required로 직렬화함
     // (legal_research.task, search_law.display가 required로 광고되던 버그, v4.4.1)
@@ -710,7 +728,7 @@ export function toMcpInputSchema(schema) {
     return rawSchema;
 }
 /**
- * v4.4.0 통합 프로필 — 9개 도구 노출, 나머지는 execute_tool로 접근
+ * v4.4.0 통합 프로필 — 노출 도구 최소화, 나머지는 execute_tool로 접근 (v4.7.0: ordinance_radar 추가로 10개)
  *
  * 노출 기준:
  *   1) 체인 도구가 fallback으로 자주 호출하는 종착 도구
@@ -721,18 +739,16 @@ export function toMcpInputSchema(schema) {
  * (verify_citations/cite_check/applicable_law/impact_map) → legal_analysis(mode).
  * 원본 12개는 allTools에 유지 — CallTool 직접 호출/execute_tool 하위호환.
  *
- * ⚠️ get_annexes 제거 금지:
- *   헬스장 환불 케이스(trace ld-1775959823220, 79s)에서 별표 3의2를 가져오기 위해
- *   discover_tools × 2 + execute_tool 헛발질로 ~15초 손실. 직노출로 해결.
+ * 목록 자체는 lib/tool-profiles 의 V3_EXPOSED — discover_tools 의 말미 안내가
+ * 같은 목록을 봐야 "1-hop 도구를 주면서 2-hop 을 안내"하는 어긋남이 안 생긴다.
  */
-const V3_EXPOSED = new Set([
-    "legal_research", // v4.4.0: chain_* 8개 통합 (task 파라미터)
-    "legal_analysis", // v4.4.0: verify_citations/cite_check/applicable_law/impact_map 통합 (mode 파라미터)
-    "search_law", "get_law_text",
-    "get_annexes",
-    "search_decisions", "get_decision_text",
-    "discover_tools", "execute_tool",
-]);
+/**
+ * 마켓플레이스(playmcp 등) 광고용 메타데이터.
+ * 원본 allTools 정의는 그대로 두고, ListTools 광고 시점에만 주입한다.
+ *   - 서비스명: description에 "Korean-law-mcp" 포함 요구 충족
+ *   - annotations: MCP ToolAnnotations. 노출 도구 모두 법제처 read-only 조회(멱등) + 외부 API 호출.
+ */
+const SERVICE_NAME = "Korean-law-mcp";
 // 이름 기반 O(1) 조회용 Map
 // allTools는 정적 — 모듈 로드 시 1회만 구성 (HTTP 모드에서 요청마다 재구성 방지)
 const toolMap = new Map(allTools.map(tool => [tool.name, tool]));
@@ -742,39 +758,63 @@ setAllToolsRef(allTools);
 const exposedTools = allTools.filter(t => V3_EXPOSED.has(t.name));
 /** 노출/전체 도구 수 — 헬스체크 등 표기용 파생값 (하드코딩 금지) */
 export const TOOL_COUNTS = { exposed: exposedTools.length, total: allTools.length };
-export function registerTools(server, apiClient) {
+export function registerTools(server, apiClient, executionLimits = readExecutionLimits()) {
     // ListTools 핸들러
     server.setRequestHandler(ListToolsRequestSchema, async () => ({
         tools: exposedTools.map(tool => ({
             name: tool.name,
-            description: tool.description,
-            inputSchema: toMcpInputSchema(tool.schema)
+            description: `${SERVICE_NAME} — ${tool.description}`,
+            inputSchema: toMcpInputSchema(tool.schema),
+            annotations: {
+                readOnlyHint: true,
+                destructiveHint: false,
+                idempotentHint: true,
+                openWorldHint: true,
+            }
         }))
     }));
     // CallTool 핸들러 — 전체 도구 실행 가능 (execute_tool 프록시 지원)
-    server.setRequestHandler(CallToolRequestSchema, async (request) => {
-        const { name, arguments: args } = request.params;
-        const tool = toolMap.get(name);
-        if (!tool) {
-            return {
-                content: [{ type: "text", text: `Unknown tool: ${name}` }],
-                isError: true
-            };
-        }
-        try {
-            const input = tool.schema.parse(args);
-            const result = await tool.handler(apiClient, input);
-            return {
-                content: result.content.map(c => ({ type: "text", text: c.text })),
-                isError: result.isError
-            };
-        }
-        catch (error) {
-            const errResult = formatToolError(error, name);
-            return {
-                content: errResult.content.map(c => ({ type: "text", text: c.text })),
-                isError: true
-            };
-        }
+    server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
+        // The HTTP entrypoint puts one budget in AsyncLocalStorage for the whole
+        // JSON-RPC envelope.  A stdio request has no outer context, so create one
+        // here.  `extra.signal` is item-specific: cancelling one batch item does
+        // not cancel siblings that only share the budget.
+        const budget = requestContext.getStore()?.budget ?? new RequestExecutionBudget(executionLimits);
+        return runWithRequestContext({ budget, signal: extra.signal }, async () => {
+            const { name, arguments: args } = request.params;
+            const tool = toolMap.get(name);
+            if (!tool) {
+                return {
+                    content: [{ type: "text", text: `Unknown tool: ${name}` }],
+                    isError: true,
+                };
+            }
+            try {
+                throwIfRequestCancelled();
+                const input = tool.schema.parse(args);
+                const result = await tool.handler(apiClient, input);
+                throwIfRequestCancelled();
+                const text = truncateResponse(result.content.map(content => content.text).join("\n"), executionLimits.maxToolResponseChars);
+                return {
+                    content: [{ type: "text", text }],
+                    isError: result.isError,
+                };
+            }
+            catch (error) {
+                // Do not turn MCP or connection cancellation into a normal tool
+                // result.  The SDK will suppress the response for its cancelled item;
+                // rethrowing also keeps upstream cancellation visible to the transport.
+                if (getRequestSignal()?.aborted)
+                    throw error;
+                const errResult = formatToolError(error, name);
+                return {
+                    content: [{
+                            type: "text",
+                            text: truncateResponse(errResult.content.map(content => content.text).join("\n"), executionLimits.maxToolResponseChars),
+                        }],
+                    isError: true,
+                };
+            }
+        });
     });
 }

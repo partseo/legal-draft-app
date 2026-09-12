@@ -10,12 +10,11 @@ export const maxDuration = 60;
 const handler = createMcpHandler(
   (server) => {
     const apiClient = new LawApiClient({ apiKey: getEnv().LAW_OC });
-    // 벤더링된 등록부를 저수준 Server에 연결 (도구 9종 노출 + execute_tool 경유 전체)
     registerTools(server.server, apiClient);
   },
   {
     capabilities: { tools: {} },
-    serverInfo: { name: "korean-law", version: "4.4.4" },
+    serverInfo: { name: "korean-law", version: "4.13.0" },
   },
   {
     basePath: "/api/mcp/korean-law",

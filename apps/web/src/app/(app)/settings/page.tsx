@@ -126,7 +126,7 @@ async function IntegrationsTab() {
   const env = getEnv();
   const health = await computeHealth(env);
   const anthropicSet = Boolean(env.ANTHROPIC_API_KEY);
-  const mcpOk = TOOL_COUNTS.exposed === 9;
+  const mcpOk = TOOL_COUNTS.exposed >= 9;
 
   const rows = [
     {
