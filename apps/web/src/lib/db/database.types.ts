@@ -127,6 +127,7 @@ export type Database = {
       cases: {
         Row: {
           assignee: string | null
+          author_mode: Database["public"]["Enums"]["author_mode"]
           created_at: string
           created_by: string
           id: string
@@ -136,6 +137,7 @@ export type Database = {
         }
         Insert: {
           assignee?: string | null
+          author_mode?: Database["public"]["Enums"]["author_mode"]
           created_at?: string
           created_by: string
           id?: string
@@ -145,6 +147,7 @@ export type Database = {
         }
         Update: {
           assignee?: string | null
+          author_mode?: Database["public"]["Enums"]["author_mode"]
           created_at?: string
           created_by?: string
           id?: string
@@ -399,7 +402,19 @@ export type Database = {
         | "검증보고"
         | "context_json"
       review_decision: "승인" | "수정지시"
-      round_kind: "소장" | "준비서면"
+      author_mode: "lawyer" | "judicial_scrivener"
+      round_kind:
+        | "소장"
+        | "준비서면"
+        | "내용증명"
+        | "가압류신청서"
+        | "가처분신청서"
+        | "강제집행신청서"
+        | "등기신청서_소유권이전"
+        | "등기신청서_근저당설정"
+        | "등기신청서_법인변경"
+        | "개인회생신청서"
+        | "파산면책신청서"
       run_stage: "intake" | "research" | "draft" | "verify"
       run_status:
         | "running"
@@ -549,7 +564,20 @@ export const Constants = {
         "context_json",
       ],
       review_decision: ["승인", "수정지시"],
-      round_kind: ["소장", "준비서면"],
+      author_mode: ["lawyer", "judicial_scrivener"],
+      round_kind: [
+        "소장",
+        "준비서면",
+        "내용증명",
+        "가압류신청서",
+        "가처분신청서",
+        "강제집행신청서",
+        "등기신청서_소유권이전",
+        "등기신청서_근저당설정",
+        "등기신청서_법인변경",
+        "개인회생신청서",
+        "파산면책신청서",
+      ],
       run_stage: ["intake", "research", "draft", "verify"],
       run_status: [
         "running",
