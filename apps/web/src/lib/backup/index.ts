@@ -38,6 +38,11 @@ const ORG_TABLES = [
     paramIsOrg: true,
   },
   {
+    name: "profiles",
+    query: `SELECT p.* FROM profiles p WHERE p.id IN (SELECT om.user_id FROM organization_members om WHERE om.organization_id = $1)`,
+    paramIsOrg: true,
+  },
+  {
     name: "cases",
     query: `SELECT * FROM cases WHERE organization_id = $1`,
     paramIsOrg: true,
