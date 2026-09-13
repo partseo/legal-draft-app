@@ -312,7 +312,7 @@ const TARGET_DB_URL = "postgresql://postgres:postgres@127.0.0.1:54332/postgres";
 const SOURCE_API = "http://127.0.0.1:54321";
 const SERVICE_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU";
-const CORPUS_B_ORG = "b0000000-0000-0000-0000-000000000055";
+const GATE7_ORG = "c0000000-0000-0000-0000-000000000701";
 
 async function isTargetStackAvailable(): Promise<boolean> {
   const client = new pg.Client(TARGET_DB_URL);
@@ -325,26 +325,95 @@ async function isTargetStackAvailable(): Promise<boolean> {
   }
 }
 
+async function createGate7TestData(): Promise<{ orgId: string; userId: string; caseCount: number; storageCount: number }> {
+  const client = new pg.Client(DB_URL);
+  await client.connect();
+  try {
+    const userId = "c0000000-0000-0000-0000-000000000702";
+
+    // Create auth user
+    await client.query(
+      `INSERT INTO auth.users (id, email) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [userId, "gate7-test@test.local"]
+    );
+    await client.query(
+      `INSERT INTO organizations (id, name) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [GATE7_ORG, "Gate 7 Test Org"]
+    );
+    await client.query(
+      `INSERT INTO profiles (id, display_name, role) VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING`,
+      [userId, "Gate 7 User"]
+    );
+    await client.query(
+      `INSERT INTO organization_members (organization_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [GATE7_ORG, userId]
+    );
+
+    // Create 5 cases with storage objects
+    let storageCount = 0;
+    for (let i = 0; i < 5; i++) {
+      const caseId = `c0000000-0000-0000-${String(i).padStart(4, "0")}-000000000703`;
+      await client.query(
+        `INSERT INTO cases (id, title, status, organization_id, created_by, author_mode)
+         VALUES ($1, $2, '진행중', $3, $4, 'lawyer') ON CONFLICT DO NOTHING`,
+        [caseId, `Gate7 Case ${i}`, GATE7_ORG, userId]
+      );
+
+      // Create storage objects for each case
+      for (let f = 0; f < 3; f++) {
+        const objId = `c0000000-0000-0000-${String(i).padStart(4, "0")}-00000000000${f}`;
+        await client.query(
+          `INSERT INTO storage.objects (id, bucket_id, name, owner, metadata, version)
+           VALUES ($1, 'case-files', $2, $3, '{}', '1') ON CONFLICT DO NOTHING`,
+          [objId, `${caseId}/file-${f}.txt`, userId]
+        );
+        storageCount++;
+      }
+    }
+
+    return { orgId: GATE7_ORG, userId, caseCount: 5, storageCount };
+  } finally {
+    await client.end();
+  }
+}
+
+async function cleanupGate7TestData(): Promise<void> {
+  const client = new pg.Client(DB_URL);
+  await client.connect();
+  try {
+    const userId = "c0000000-0000-0000-0000-000000000702";
+    await client.query(`DELETE FROM storage.objects WHERE owner = $1`, [userId]);
+    await client.query(`DELETE FROM cases WHERE organization_id = $1`, [GATE7_ORG]);
+    await client.query(`DELETE FROM organization_members WHERE organization_id = $1`, [GATE7_ORG]);
+    await client.query(`DELETE FROM profiles WHERE id = $1`, [userId]);
+    await client.query(`DELETE FROM organizations WHERE id = $1`, [GATE7_ORG]);
+    await client.query(`DELETE FROM auth.users WHERE id = $1`, [userId]);
+  } finally {
+    await client.end();
+  }
+}
+
 describe("Gate 7 Corrected: Cross-Stack Isolated Restore", { timeout: 120_000 }, () => {
   let targetAvailable = false;
   let storageBackupArchive: string;
   let storageBackupTmpDir: string;
   let crossStackDbName: string;
   let crossStackResult: Awaited<ReturnType<typeof restore>>;
+  let testData: { orgId: string; userId: string; caseCount: number; storageCount: number };
   const targetCreatedDbs: string[] = [];
 
   beforeAll(async () => {
     targetAvailable = await isTargetStackAvailable();
     if (!targetAvailable) return;
 
+    testData = await createGate7TestData();
+
     storageBackupTmpDir = makeTmpDir();
     const r = await backup({
-      organizationId: CORPUS_B_ORG,
+      organizationId: GATE7_ORG,
       outputPath: storageBackupTmpDir,
       encryptionKey: TEST_KEY,
       dbUrl: DB_URL,
-      storageApiUrl: SOURCE_API,
-      storageApiKey: SERVICE_KEY,
     });
     storageBackupArchive = r.archivePath;
 
@@ -363,6 +432,7 @@ describe("Gate 7 Corrected: Cross-Stack Isolated Restore", { timeout: 120_000 },
       try { await dropIsolatedDb(db, TARGET_DB_URL); } catch {}
     }
     if (storageBackupTmpDir) cleanTmpDir(storageBackupTmpDir);
+    try { await cleanupGate7TestData(); } catch {}
   }, 30_000);
 
   // ── R16: Cross-stack restore completes ─────────────────────────
@@ -389,7 +459,7 @@ describe("Gate 7 Corrected: Cross-Stack Isolated Restore", { timeout: 120_000 },
   it("R19: storage.objects rows restored to target stack", () => {
     if (!targetAvailable) return;
     const storageCount = crossStackResult.restoredRows["storage_objects"] ?? 0;
-    expect(storageCount).toBe(124);
+    expect(storageCount).toBe(testData.storageCount);
   });
 
   // ── R20: path_tokens generated column works on target ──────────
@@ -413,18 +483,18 @@ describe("Gate 7 Corrected: Cross-Stack Isolated Restore", { timeout: 120_000 },
   // ── R21: Cases match on cross-stack restore ────────────────────
   it("R21: case count matches backup manifest on target", () => {
     if (!targetAvailable) return;
-    expect(crossStackResult.restoredRows.cases).toBe(30);
+    expect(crossStackResult.restoredRows.cases).toBe(testData.caseCount);
   });
 
   // ── R22: Single org isolation on target ────────────────────────
-  it("R22: target DB contains only Corpus B org", async () => {
+  it("R22: target DB contains only test org", async () => {
     if (!targetAvailable) return;
     const client = new pg.Client(crossStackResult.targetDbUrl);
     await client.connect();
     try {
       const orgs = await client.query("SELECT id FROM organizations");
       expect(orgs.rows).toHaveLength(1);
-      expect(orgs.rows[0].id).toBe(CORPUS_B_ORG);
+      expect(orgs.rows[0].id).toBe(GATE7_ORG);
     } finally {
       await client.end();
     }
@@ -530,16 +600,16 @@ describe("Gate 7 Corrected: Cross-Stack Isolated Restore", { timeout: 120_000 },
   });
 
   // ── R28: Source DB unaffected by cross-stack restore ────────────
-  it("R28: source DB Corpus B data unchanged after target restore", async () => {
+  it("R28: source DB test data unchanged after target restore", async () => {
     if (!targetAvailable) return;
     const client = new pg.Client(DB_URL);
     await client.connect();
     try {
       const cnt = await client.query(
         "SELECT count(*)::int AS cnt FROM cases WHERE organization_id = $1",
-        [CORPUS_B_ORG]
+        [GATE7_ORG]
       );
-      expect(cnt.rows[0].cnt).toBe(30);
+      expect(cnt.rows[0].cnt).toBe(testData.caseCount);
     } finally {
       await client.end();
     }

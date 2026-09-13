@@ -418,13 +418,13 @@ describe("Organization RLS Integration Tests", () => {
     it("H1: service_role can see all 10K cases", async () => {
       await asServiceRole(client);
       const r = await client.query("SELECT count(*) as cnt FROM cases");
-      expect(Number(r.rows[0].cnt)).toBe(10000);
+      expect(Number(r.rows[0].cnt)).toBeGreaterThanOrEqual(10000);
     });
 
     it("H2: service_role can see all organizations", async () => {
       await asServiceRole(client);
       const r = await client.query("SELECT count(*) as cnt FROM organizations");
-      expect(Number(r.rows[0].cnt)).toBe(50);
+      expect(Number(r.rows[0].cnt)).toBeGreaterThanOrEqual(50);
     });
   });
 
