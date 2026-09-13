@@ -8,6 +8,8 @@ const USER_A2 = "a0000000-0000-0000-0000-000000000002";
 const USER_B1 = "a0000000-0000-0000-0000-000000000003";
 const CASE_A1 = "c0000001-0000-0000-0000-000000000000";
 const CASE_B1 = "c0000401-0000-0000-0000-000000000000";
+const CASE_ORG1 = "c0000050-0000-0000-0000-000000000000"; // USER_A1's org
+const CASE_ORG3 = "c0009952-0000-0000-0000-000000000000"; // USER_B1's org
 
 function jwtClaims(userId: string) {
   return JSON.stringify({ sub: userId, role: "authenticated", aud: "authenticated" });
@@ -465,23 +467,214 @@ describe("Organization RLS Integration Tests", () => {
     });
   });
 
-  // ── K: Checkpoints cross-org isolation ──
+  // ── K: Checkpoints cross-org isolation (live data) ──
 
-  describe("K: Checkpoints org isolation", () => {
-    it("K1: USER_A1 cannot see checkpoints from other orgs", async () => {
+  describe("K: Checkpoints org isolation with live data", () => {
+    it("K1: same-org checkpoint visible, cross-org invisible", async () => {
+      await client.query("BEGIN");
+
+      // Insert test checkpoints as superuser
+      const runA = await client.query(
+        `SELECT rn.id FROM runs rn JOIN rounds rd ON rd.id = rn.round_id
+         WHERE rd.case_id = $1 LIMIT 1`, [CASE_ORG1]);
+      const runB = await client.query(
+        `SELECT rn.id FROM runs rn JOIN rounds rd ON rd.id = rn.round_id
+         WHERE rd.case_id = $1 LIMIT 1`, [CASE_ORG3]);
+
+      await client.query(
+        `INSERT INTO checkpoints (id, run_id, kind, status, payload) VALUES
+         ('eeee0001-0000-0000-0000-000000000001', $1, '쟁점승인', '대기', '{"test":"org1"}'),
+         ('eeee0001-0000-0000-0000-000000000002', $2, '쟁점승인', '대기', '{"test":"org3"}')`,
+        [runA.rows[0].id, runB.rows[0].id]);
+
       await asAuthenticated(client, USER_A1);
-      const r = await client.query("SELECT count(*) as cnt FROM checkpoints");
-      const ownCount = Number(r.rows[0].cnt);
+      const own = await client.query(
+        "SELECT count(*)::int as cnt FROM checkpoints WHERE id = 'eeee0001-0000-0000-0000-000000000001'");
+      expect(own.rows[0].cnt).toBe(1);
+
+      const cross = await client.query(
+        "SELECT count(*)::int as cnt FROM checkpoints WHERE id = 'eeee0001-0000-0000-0000-000000000002'");
+      expect(cross.rows[0].cnt).toBe(0);
 
       await resetRole(client);
-      const totalR = await client.query("SELECT count(*) as cnt FROM checkpoints");
-      const totalCount = Number(totalR.rows[0].cnt);
+      await client.query("ROLLBACK");
+    });
 
-      if (totalCount > 0) {
-        expect(ownCount).toBeLessThan(totalCount);
-      } else {
-        expect(ownCount).toBe(0);
-      }
+    it("K2: cross-org checkpoint INSERT blocked", async () => {
+      await client.query("BEGIN");
+
+      const runB = await client.query(
+        `SELECT rn.id FROM runs rn JOIN rounds rd ON rd.id = rn.round_id
+         WHERE rd.case_id = $1 LIMIT 1`, [CASE_ORG3]);
+
+      await asAuthenticated(client, USER_A1);
+      await expect(client.query(
+        `INSERT INTO checkpoints (id, run_id, kind, status, payload)
+         VALUES (gen_random_uuid(), $1, '쟁점승인', '대기', '{}')`,
+        [runB.rows[0].id]
+      )).rejects.toThrow();
+
+      await resetRole(client);
+      await client.query("ROLLBACK");
+    });
+
+    it("K3: cross-org checkpoint UPDATE blocked", async () => {
+      await client.query("BEGIN");
+
+      const runB = await client.query(
+        `SELECT rn.id FROM runs rn JOIN rounds rd ON rd.id = rn.round_id
+         WHERE rd.case_id = $1 LIMIT 1`, [CASE_ORG3]);
+      await client.query(
+        `INSERT INTO checkpoints (id, run_id, kind, status, payload)
+         VALUES ('eeee0001-0000-0000-0000-000000000002', $1, '쟁점승인', '대기', '{}')`,
+        [runB.rows[0].id]);
+
+      await asAuthenticated(client, USER_A1);
+      const r = await client.query(
+        "UPDATE checkpoints SET payload = '{\"t\":1}' WHERE id = 'eeee0001-0000-0000-0000-000000000002'");
+      expect(r.rowCount).toBe(0);
+
+      await resetRole(client);
+      await client.query("ROLLBACK");
+    });
+
+    it("K4: cross-org checkpoint DELETE blocked", async () => {
+      await client.query("BEGIN");
+
+      const runB = await client.query(
+        `SELECT rn.id FROM runs rn JOIN rounds rd ON rd.id = rn.round_id
+         WHERE rd.case_id = $1 LIMIT 1`, [CASE_ORG3]);
+      await client.query(
+        `INSERT INTO checkpoints (id, run_id, kind, status, payload)
+         VALUES ('eeee0001-0000-0000-0000-000000000002', $1, '쟁점승인', '대기', '{}')`,
+        [runB.rows[0].id]);
+
+      await asAuthenticated(client, USER_A1);
+      const r = await client.query(
+        "DELETE FROM checkpoints WHERE id = 'eeee0001-0000-0000-0000-000000000002' RETURNING id");
+      expect(r.rowCount).toBe(0);
+
+      await resetRole(client);
+      await client.query("ROLLBACK");
+    });
+  });
+
+  // ── L: Storage object org isolation (live data) ──
+
+  describe("L: Storage object org isolation", () => {
+    const OBJ_A = "ff000001-0000-0000-0000-000000000001";
+    const OBJ_B = "ff000001-0000-0000-0000-000000000002";
+    const PATH_A = `${CASE_ORG1}/test_doc_a.pdf`;
+    const PATH_B = `${CASE_ORG3}/test_doc_b.pdf`;
+
+    it("L1: ORG_A member can SELECT own storage object", async () => {
+      await client.query("BEGIN");
+      await client.query(
+        `INSERT INTO storage.objects (id, bucket_id, name, owner, created_at, updated_at, metadata)
+         VALUES ($1, 'case-files', $2, $3, now(), now(), '{}')`,
+        [OBJ_A, PATH_A, USER_A1]);
+
+      await asAuthenticated(client, USER_A1);
+      const r = await client.query(
+        "SELECT count(*)::int as cnt FROM storage.objects WHERE id = $1", [OBJ_A]);
+      expect(r.rows[0].cnt).toBe(1);
+
+      await resetRole(client);
+      await client.query("ROLLBACK");
+    });
+
+    it("L2: ORG_B member cannot SELECT ORG_A storage object", async () => {
+      await client.query("BEGIN");
+      await client.query(
+        `INSERT INTO storage.objects (id, bucket_id, name, owner, created_at, updated_at, metadata)
+         VALUES ($1, 'case-files', $2, $3, now(), now(), '{}')`,
+        [OBJ_A, PATH_A, USER_A1]);
+
+      await asAuthenticated(client, USER_B1);
+      const r = await client.query(
+        "SELECT count(*)::int as cnt FROM storage.objects WHERE id = $1", [OBJ_A]);
+      expect(r.rows[0].cnt).toBe(0);
+
+      await resetRole(client);
+      await client.query("ROLLBACK");
+    });
+
+    it("L3: ORG_B member cannot INSERT into ORG_A storage path", async () => {
+      await client.query("BEGIN");
+      await asAuthenticated(client, USER_B1);
+      await expect(client.query(
+        `INSERT INTO storage.objects (id, bucket_id, name, owner, created_at, updated_at, metadata)
+         VALUES ($1, 'case-files', $2, $3, now(), now(), '{}')`,
+        [OBJ_B, PATH_A, USER_B1]
+      )).rejects.toThrow();
+
+      await resetRole(client);
+      await client.query("ROLLBACK");
+    });
+
+    it("L4: ORG_B member cannot UPDATE ORG_A storage object", async () => {
+      await client.query("BEGIN");
+      await client.query(
+        `INSERT INTO storage.objects (id, bucket_id, name, owner, created_at, updated_at, metadata)
+         VALUES ($1, 'case-files', $2, $3, now(), now(), '{}')`,
+        [OBJ_A, PATH_A, USER_A1]);
+
+      await asAuthenticated(client, USER_B1);
+      const r = await client.query(
+        "UPDATE storage.objects SET metadata = '{\"x\":1}' WHERE id = $1", [OBJ_A]);
+      expect(r.rowCount).toBe(0);
+
+      await resetRole(client);
+      await client.query("ROLLBACK");
+    });
+
+    it("L5: anon cannot SELECT storage objects", async () => {
+      await client.query("BEGIN");
+      await client.query(
+        `INSERT INTO storage.objects (id, bucket_id, name, owner, created_at, updated_at, metadata)
+         VALUES ($1, 'case-files', $2, $3, now(), now(), '{}')`,
+        [OBJ_A, PATH_A, USER_A1]);
+
+      await asAnon(client);
+      const r = await client.query(
+        "SELECT count(*)::int as cnt FROM storage.objects WHERE id = $1", [OBJ_A]);
+      expect(r.rows[0].cnt).toBe(0);
+
+      await resetRole(client);
+      await client.query("ROLLBACK");
+    });
+
+    it("L6: ORG_A member can INSERT for own case path", async () => {
+      await client.query("BEGIN");
+      await asAuthenticated(client, USER_A1);
+      const r = await client.query(
+        `INSERT INTO storage.objects (id, bucket_id, name, owner, created_at, updated_at, metadata)
+         VALUES ($1, 'case-files', $2, $3, now(), now(), '{}') RETURNING id`,
+        [OBJ_A, PATH_A, USER_A1]);
+      expect(r.rowCount).toBe(1);
+
+      await resetRole(client);
+      await client.query("ROLLBACK");
+    });
+  });
+
+  // ── M: Cross-org DELETE explicit (directive §6.1) ──
+
+  describe("M: Cross-org case DELETE explicit", () => {
+    it("M1: USER_B1 cannot DELETE CASE_A1", async () => {
+      await client.query("BEGIN");
+      await asAuthenticated(client, USER_B1);
+      const r = await client.query(
+        "DELETE FROM cases WHERE id = $1 RETURNING id", [CASE_A1]);
+      expect(r.rowCount).toBe(0);
+
+      await resetRole(client);
+      // Verify case still exists
+      const check = await client.query(
+        "SELECT count(*)::int as cnt FROM cases WHERE id = $1", [CASE_A1]);
+      expect(check.rows[0].cnt).toBe(1);
+
+      await client.query("ROLLBACK");
     });
   });
 });
