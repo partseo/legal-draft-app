@@ -165,6 +165,14 @@ function collectUserIds(data: Record<string, unknown[]>): Set<string> {
   return ids;
 }
 
+function quoteTableName(name: string): string {
+  if (name.includes(".")) {
+    const [schema, table] = name.split(".", 2);
+    return `"${schema}"."${table}"`;
+  }
+  return `"${name}"`;
+}
+
 async function insertRows(
   client: pg.Client,
   tableName: string,
@@ -175,6 +183,7 @@ async function insertRows(
   const columns = Object.keys(rows[0]);
   const colList = columns.map((c) => `"${c}"`).join(", ");
   const BATCH = 200;
+  const quotedTable = quoteTableName(tableName);
 
   let inserted = 0;
   for (let i = 0; i < rows.length; i += BATCH) {
@@ -191,7 +200,7 @@ async function insertRows(
     }
 
     await client.query(
-      `INSERT INTO "${tableName}" (${colList}) VALUES ${rowPlaceholders.join(", ")} ON CONFLICT DO NOTHING`,
+      `INSERT INTO ${quotedTable} (${colList}) VALUES ${rowPlaceholders.join(", ")} ON CONFLICT DO NOTHING`,
       allValues
     );
     inserted += batch.length;
@@ -267,7 +276,13 @@ export async function restore(options: RestoreOptions): Promise<RestoreResult> {
         updated_at timestamptz DEFAULT now(),
         last_accessed_at timestamptz DEFAULT now(),
         metadata jsonb,
-        version text
+        path_tokens text[] GENERATED ALWAYS AS (string_to_array(name, '/')) STORED,
+        version text,
+        owner_id text,
+        user_metadata jsonb,
+        archived_at timestamptz,
+        is_delete_marker boolean NOT NULL DEFAULT false,
+        is_versioned boolean NOT NULL DEFAULT false
       )
     `);
 
@@ -305,7 +320,11 @@ export async function restore(options: RestoreOptions): Promise<RestoreResult> {
       }
 
       if (tableName === "storage_objects") {
-        const count = await insertRows(targetClient, "storage.objects", rows);
+        const filtered = rows.map((r) => {
+          const { path_tokens, ...rest } = r as Record<string, unknown> & { path_tokens?: unknown };
+          return rest;
+        });
+        const count = await insertRows(targetClient, "storage.objects", filtered);
         restoredRows[tableName] = count;
         totalRows += count;
       } else {

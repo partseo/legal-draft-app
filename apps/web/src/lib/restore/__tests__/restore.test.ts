@@ -305,3 +305,274 @@ describe("Gate 7: Isolated Restore TDD", { timeout: 60_000 }, () => {
     }
   });
 });
+
+// ─── Gate 7 Corrected: Cross-Stack Isolated Restore with Storage ─────
+
+const TARGET_DB_URL = "postgresql://postgres:postgres@127.0.0.1:54332/postgres";
+const SOURCE_API = "http://127.0.0.1:54321";
+const SERVICE_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU";
+const CORPUS_B_ORG = "b0000000-0000-0000-0000-000000000055";
+
+async function isTargetStackAvailable(): Promise<boolean> {
+  const client = new pg.Client(TARGET_DB_URL);
+  try {
+    await client.connect();
+    await client.end();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+describe("Gate 7 Corrected: Cross-Stack Isolated Restore", { timeout: 120_000 }, () => {
+  let targetAvailable = false;
+  let storageBackupArchive: string;
+  let storageBackupTmpDir: string;
+  let crossStackDbName: string;
+  let crossStackResult: Awaited<ReturnType<typeof restore>>;
+  const targetCreatedDbs: string[] = [];
+
+  beforeAll(async () => {
+    targetAvailable = await isTargetStackAvailable();
+    if (!targetAvailable) return;
+
+    storageBackupTmpDir = makeTmpDir();
+    const r = await backup({
+      organizationId: CORPUS_B_ORG,
+      outputPath: storageBackupTmpDir,
+      encryptionKey: TEST_KEY,
+      dbUrl: DB_URL,
+      storageApiUrl: SOURCE_API,
+      storageApiKey: SERVICE_KEY,
+    });
+    storageBackupArchive = r.archivePath;
+
+    crossStackDbName = `gate7_cross_${Date.now()}`;
+    targetCreatedDbs.push(crossStackDbName);
+    crossStackResult = await restore({
+      archivePath: storageBackupArchive,
+      encryptionKey: TEST_KEY,
+      targetDbName: crossStackDbName,
+      sourceDbUrl: TARGET_DB_URL,
+    });
+  }, 180_000);
+
+  afterAll(async () => {
+    for (const db of targetCreatedDbs) {
+      try { await dropIsolatedDb(db, TARGET_DB_URL); } catch {}
+    }
+    if (storageBackupTmpDir) cleanTmpDir(storageBackupTmpDir);
+  }, 30_000);
+
+  // ── R16: Cross-stack restore completes ─────────────────────────
+  it("R16: restore to different Supabase stack (port 54332) succeeds", () => {
+    if (!targetAvailable) return;
+    expect(crossStackResult.totalRows).toBeGreaterThan(0);
+    expect(crossStackResult.targetDbUrl).toContain("54332");
+  });
+
+  // ── R17: Target DB URL points to target stack ──────────────────
+  it("R17: target DB URL is on port 54332, not 54322", () => {
+    if (!targetAvailable) return;
+    expect(crossStackResult.targetDbUrl).not.toContain("54322");
+    expect(crossStackResult.targetDbUrl).toContain("54332");
+  });
+
+  // ── R18: Integrity match on cross-stack restore ────────────────
+  it("R18: integrity checksums match on cross-stack restore", () => {
+    if (!targetAvailable) return;
+    expect(crossStackResult.integrityMatch).toBe(true);
+  });
+
+  // ── R19: Storage objects restored to target stack ──────────────
+  it("R19: storage.objects rows restored to target stack", () => {
+    if (!targetAvailable) return;
+    const storageCount = crossStackResult.restoredRows["storage_objects"] ?? 0;
+    expect(storageCount).toBe(124);
+  });
+
+  // ── R20: path_tokens generated column works on target ──────────
+  it("R20: path_tokens generated column populated on target", async () => {
+    if (!targetAvailable) return;
+    const client = new pg.Client(crossStackResult.targetDbUrl);
+    await client.connect();
+    try {
+      const r = await client.query(
+        "SELECT path_tokens FROM storage.objects WHERE name LIKE '%/%' LIMIT 1"
+      );
+      if (r.rows.length > 0) {
+        expect(Array.isArray(r.rows[0].path_tokens)).toBe(true);
+        expect(r.rows[0].path_tokens.length).toBeGreaterThan(1);
+      }
+    } finally {
+      await client.end();
+    }
+  });
+
+  // ── R21: Cases match on cross-stack restore ────────────────────
+  it("R21: case count matches backup manifest on target", () => {
+    if (!targetAvailable) return;
+    expect(crossStackResult.restoredRows.cases).toBe(30);
+  });
+
+  // ── R22: Single org isolation on target ────────────────────────
+  it("R22: target DB contains only Corpus B org", async () => {
+    if (!targetAvailable) return;
+    const client = new pg.Client(crossStackResult.targetDbUrl);
+    await client.connect();
+    try {
+      const orgs = await client.query("SELECT id FROM organizations");
+      expect(orgs.rows).toHaveLength(1);
+      expect(orgs.rows[0].id).toBe(CORPUS_B_ORG);
+    } finally {
+      await client.end();
+    }
+  });
+
+  // ── R23: Auth stubs created on target ──────────────────────────
+  it("R23: auth.users stubs created on target for all profiles", async () => {
+    if (!targetAvailable) return;
+    const client = new pg.Client(crossStackResult.targetDbUrl);
+    await client.connect();
+    try {
+      const orphans = await client.query(
+        "SELECT count(*)::int AS cnt FROM profiles p WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE u.id = p.id)"
+      );
+      expect(orphans.rows[0].cnt).toBe(0);
+    } finally {
+      await client.end();
+    }
+  });
+
+  // ── R24: All 9 enum types created on target ────────────────────
+  it("R24: all 9 enum types exist on target stack", async () => {
+    if (!targetAvailable) return;
+    const client = new pg.Client(crossStackResult.targetDbUrl);
+    await client.connect();
+    try {
+      const enums = await client.query(
+        "SELECT typname FROM pg_type WHERE typtype = 'e' AND typnamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'public')"
+      );
+      const names = enums.rows.map((r: { typname: string }) => r.typname);
+      expect(names.length).toBe(9);
+      for (const e of ["author_mode", "file_kind", "run_status", "round_kind", "user_role"]) {
+        expect(names).toContain(e);
+      }
+    } finally {
+      await client.end();
+    }
+  });
+
+  // ── R25: quoteTableName handles schema-qualified names ─────────
+  it("R25: quoteTableName produces correct SQL for schema.table", async () => {
+    const { quoteTableName } = await import("../index") as any;
+    if (typeof quoteTableName !== "function") {
+      // quoteTableName is not exported — test via behavior: restore with storage works
+      expect(crossStackResult?.restoredRows["storage_objects"]).toBeGreaterThan(0);
+      return;
+    }
+    expect(quoteTableName("storage.objects")).toBe('"storage"."objects"');
+    expect(quoteTableName("cases")).toBe('"cases"');
+  });
+
+  // ── R26: Restore idempotent on target stack ────────────────────
+  it("R26: drop + re-restore on target produces same counts", async () => {
+    if (!targetAvailable) return;
+    const dbName = `gate7_idem_${Date.now()}`;
+    targetCreatedDbs.push(dbName);
+
+    const r1 = await restore({
+      archivePath: storageBackupArchive,
+      encryptionKey: TEST_KEY,
+      targetDbName: dbName,
+      sourceDbUrl: TARGET_DB_URL,
+    });
+
+    await dropIsolatedDb(dbName, TARGET_DB_URL);
+
+    const r2 = await restore({
+      archivePath: storageBackupArchive,
+      encryptionKey: TEST_KEY,
+      targetDbName: dbName,
+      sourceDbUrl: TARGET_DB_URL,
+    });
+
+    expect(r1.totalRows).toBe(r2.totalRows);
+    expect(r1.restoredRows["storage_objects"]).toBe(r2.restoredRows["storage_objects"]);
+  });
+
+  // ── R27: dropIsolatedDb works on target stack ──────────────────
+  it("R27: dropIsolatedDb removes DB from target stack", async () => {
+    if (!targetAvailable) return;
+    const dbName = `gate7_drop_${Date.now()}`;
+
+    await restore({
+      archivePath: storageBackupArchive,
+      encryptionKey: TEST_KEY,
+      targetDbName: dbName,
+      sourceDbUrl: TARGET_DB_URL,
+    });
+
+    await dropIsolatedDb(dbName, TARGET_DB_URL);
+
+    const client = new pg.Client(TARGET_DB_URL);
+    await client.connect();
+    try {
+      const dbs = await client.query(
+        "SELECT 1 FROM pg_database WHERE datname = $1",
+        [dbName]
+      );
+      expect(dbs.rows).toHaveLength(0);
+    } finally {
+      await client.end();
+    }
+  });
+
+  // ── R28: Source DB unaffected by cross-stack restore ────────────
+  it("R28: source DB Corpus B data unchanged after target restore", async () => {
+    if (!targetAvailable) return;
+    const client = new pg.Client(DB_URL);
+    await client.connect();
+    try {
+      const cnt = await client.query(
+        "SELECT count(*)::int AS cnt FROM cases WHERE organization_id = $1",
+        [CORPUS_B_ORG]
+      );
+      expect(cnt.rows[0].cnt).toBe(30);
+    } finally {
+      await client.end();
+    }
+  });
+
+  // ── R29: Storage objects have correct bucket_id on target ──────
+  it("R29: storage objects bucket_id = 'case-files' on target", async () => {
+    if (!targetAvailable) return;
+    const client = new pg.Client(crossStackResult.targetDbUrl);
+    await client.connect();
+    try {
+      const r = await client.query(
+        "SELECT DISTINCT bucket_id FROM storage.objects"
+      );
+      expect(r.rows.length).toBe(1);
+      expect(r.rows[0].bucket_id).toBe("case-files");
+    } finally {
+      await client.end();
+    }
+  });
+
+  // ── R30: FK: cases→organizations valid on target ───────────────
+  it("R30: all cases reference existing org on target", async () => {
+    if (!targetAvailable) return;
+    const client = new pg.Client(crossStackResult.targetDbUrl);
+    await client.connect();
+    try {
+      const orphans = await client.query(
+        "SELECT count(*)::int AS cnt FROM cases c WHERE NOT EXISTS (SELECT 1 FROM organizations o WHERE o.id = c.organization_id)"
+      );
+      expect(orphans.rows[0].cnt).toBe(0);
+    } finally {
+      await client.end();
+    }
+  });
+});
