@@ -2,15 +2,23 @@ import Link from "next/link";
 import { Plus, Search, ChevronDown } from "lucide-react";
 import { createRouteClient } from "@/lib/db/clients";
 import { CaseRow } from "@/components/case-row";
+import { fetchCasePage } from "@/lib/db/pagination";
+import { CasePagination } from "@/components/case-pagination";
 
 export const dynamic = "force-dynamic";
 
-export default async function CasesPage() {
+type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
+
+export default async function CasesPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
+  const params = await searchParams;
+  const cursor =
+    typeof params.cursor === "string" ? params.cursor : undefined;
   const supabase = await createRouteClient();
-  const { data: cases } = await supabase
-    .from("cases")
-    .select("id, title, status, updated_at, assignee:profiles!cases_assignee_fkey(display_name)")
-    .order("updated_at", { ascending: false });
+  const page = await fetchCasePage(supabase, { cursor });
 
   return (
     <div className="flex flex-col gap-6 p-9">
@@ -34,7 +42,7 @@ export default async function CasesPage() {
         </span>
       </div>
 
-      {!cases || cases.length === 0 ? (
+      {page.items.length === 0 && !cursor ? (
         <div className="flex flex-col items-center justify-center gap-5 rounded-lg border border-neutral-200 bg-white p-10 py-24">
           <div className="flex flex-col items-center gap-1.5">
             <p className="text-[15px] font-semibold text-neutral-950">아직 사건이 없습니다.</p>
@@ -48,28 +56,39 @@ export default async function CasesPage() {
           </Link>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
-          <div className="flex items-center bg-neutral-100 px-4 py-[11px] text-xs font-semibold text-neutral-500">
-            <span className="flex-1">사건명</span>
-            <span className="w-[170px]">담당</span>
-            <span className="w-[150px]">진행</span>
-            <span className="w-[140px]">상태</span>
-            <span className="w-[110px]">최근 활동</span>
+        <>
+          <div className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
+            <div className="flex items-center bg-neutral-100 px-4 py-[11px] text-xs font-semibold text-neutral-500">
+              <span className="flex-1">사건명</span>
+              <span className="w-[170px]">담당</span>
+              <span className="w-[150px]">진행</span>
+              <span className="w-[140px]">상태</span>
+              <span className="w-[110px]">최근 활동</span>
+            </div>
+            {page.items.map((c, i) => {
+              const assignee = c.assignee as { display_name: string | null } | null;
+              return (
+                <CaseRow
+                  key={c.id}
+                  index={i}
+                  c={{
+                    id: c.id,
+                    title: c.title,
+                    status: c.status,
+                    updated_at: c.updated_at,
+                    assigneeName: assignee?.display_name ?? null,
+                  }}
+                />
+              );
+            })}
           </div>
-          {cases.map((c, i) => (
-            <CaseRow
-              key={c.id}
-              index={i}
-              c={{
-                id: c.id,
-                title: c.title,
-                status: c.status,
-                updated_at: c.updated_at,
-                assigneeName: c.assignee?.display_name ?? null,
-              }}
-            />
-          ))}
-        </div>
+          <CasePagination
+            count={page.items.length}
+            hasNextPage={page.hasNextPage}
+            nextCursor={page.nextCursor}
+            hasPrevPage={!!cursor}
+          />
+        </>
       )}
     </div>
   );
