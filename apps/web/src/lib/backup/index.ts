@@ -8,6 +8,8 @@ export interface BackupOptions {
   outputPath: string;
   encryptionKey: Buffer;
   dbUrl?: string;
+  storageApiUrl?: string;
+  storageApiKey?: string;
 }
 
 export interface BackupManifest {
@@ -15,8 +17,11 @@ export interface BackupManifest {
   organizationId: string;
   createdAt: string;
   tables: Record<string, { rowCount: number; checksum: string }>;
-  files: { path: string; checksum: string }[];
+  files: { path: string; checksum: string; contentChecksum?: string }[];
   encrypted: boolean;
+  storageFilesIncluded?: boolean;
+  storageFilesTotalBytes?: number;
+  storageFileErrors?: { path: string; error: string }[];
 }
 
 export interface BackupResult {
@@ -101,8 +106,33 @@ export function decrypt(encrypted: Buffer, key: Buffer): Buffer {
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
 }
 
+async function downloadStorageFile(
+  apiUrl: string,
+  apiKey: string,
+  bucket: string,
+  objectName: string
+): Promise<{ data: Buffer | null; error: string | null }> {
+  try {
+    const url = `${apiUrl}/storage/v1/object/authenticated/${bucket}/${objectName}`;
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        apikey: apiKey,
+      },
+    });
+    if (!res.ok) {
+      return { data: null, error: `HTTP ${res.status}` };
+    }
+    const data = Buffer.from(await res.arrayBuffer());
+    return { data, error: null };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { data: null, error: msg };
+  }
+}
+
 export async function backup(options: BackupOptions): Promise<BackupResult> {
-  const { organizationId, outputPath, encryptionKey, dbUrl } = options;
+  const { organizationId, outputPath, encryptionKey, dbUrl, storageApiUrl, storageApiKey } = options;
 
   if (!encryptionKey || encryptionKey.length === 0) {
     throw new Error("Encryption key is required");
@@ -146,12 +176,37 @@ export async function backup(options: BackupOptions): Promise<BackupResult> {
       totalRows += rows.length;
     }
 
-    const storageFiles: { path: string; checksum: string }[] = [];
-    for (const obj of tableData.storage_objects as Array<{ name: string }>) {
-      storageFiles.push({
+    const storageObjects = tableData.storage_objects as Array<{ name: string; bucket_id: string }>;
+    const storageFileEntries: BackupManifest["files"] = [];
+    const storageFileErrors: { path: string; error: string }[] = [];
+    const storageFilesMap: Record<string, string> = {};
+    let storageFilesTotalBytes = 0;
+    const shouldDownloadBinaries = !!(storageApiUrl && storageApiKey && storageObjects.length > 0);
+
+    for (const obj of storageObjects) {
+      const entry: { path: string; checksum: string; contentChecksum?: string } = {
         path: obj.name,
         checksum: sha256(JSON.stringify(obj)),
-      });
+      };
+
+      if (shouldDownloadBinaries) {
+        const { data, error } = await downloadStorageFile(
+          storageApiUrl!,
+          storageApiKey!,
+          obj.bucket_id || "case-files",
+          obj.name
+        );
+        if (data !== null) {
+          const b64 = data.toString("base64");
+          storageFilesMap[obj.name] = b64;
+          entry.contentChecksum = sha256(data);
+          storageFilesTotalBytes += data.length;
+        } else {
+          storageFileErrors.push({ path: obj.name, error: error! });
+        }
+      }
+
+      storageFileEntries.push(entry);
     }
 
     const manifest: BackupManifest = {
@@ -159,11 +214,24 @@ export async function backup(options: BackupOptions): Promise<BackupResult> {
       organizationId,
       createdAt: new Date().toISOString(),
       tables: tableChecksums,
-      files: storageFiles,
+      files: storageFileEntries,
       encrypted: true,
     };
 
-    const payload = JSON.stringify({ manifest, data: tableData });
+    if (shouldDownloadBinaries) {
+      manifest.storageFilesIncluded = true;
+      manifest.storageFilesTotalBytes = storageFilesTotalBytes;
+      if (storageFileErrors.length > 0) {
+        manifest.storageFileErrors = storageFileErrors;
+      }
+    }
+
+    const payloadObj: Record<string, unknown> = { manifest, data: tableData };
+    if (shouldDownloadBinaries && Object.keys(storageFilesMap).length > 0) {
+      payloadObj.storageFiles = storageFilesMap;
+    }
+
+    const payload = JSON.stringify(payloadObj);
     const payloadBuffer = Buffer.from(payload, "utf-8");
     const encrypted = encryptData(payloadBuffer, encryptionKey);
 
@@ -176,7 +244,7 @@ export async function backup(options: BackupOptions): Promise<BackupResult> {
       manifest,
       archivePath,
       totalRows,
-      totalFiles: storageFiles.length,
+      totalFiles: storageFileEntries.length,
     };
   } catch (err) {
     if (archivePath && fs.existsSync(archivePath)) {

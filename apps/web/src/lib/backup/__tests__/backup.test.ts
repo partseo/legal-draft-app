@@ -409,3 +409,458 @@ describe("Gate 6: Organization Backup TDD", () => {
     }
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// Gate 6 Corrective: Storage Binary Backup TDD (T16-T25)
+// ═══════════════════════════════════════════════════════════════════
+
+const API_URL = "http://127.0.0.1:54321";
+const ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0";
+const SERVICE_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU";
+const BUCKET = "case-files";
+
+function sha256Buf(data: Buffer): string {
+  return crypto.createHash("sha256").update(data).digest("hex");
+}
+
+const STORAGE_TEST_ORG = "b0000000-0000-0000-0000-000000000052";
+const STORAGE_OTHER_ORG = "b0000000-0000-0000-0000-000000000053";
+
+interface StorageTestUser {
+  id: string;
+  email: string;
+  accessToken: string;
+}
+
+async function createStorageTestUser(
+  email: string,
+  orgId: string
+): Promise<StorageTestUser> {
+  const createRes = await fetch(`${API_URL}/auth/v1/admin/users`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${SERVICE_KEY}`,
+      apikey: SERVICE_KEY,
+    },
+    body: JSON.stringify({ email, password: "StorageBkTest_2026!", email_confirm: true }),
+  });
+  if (!createRes.ok) throw new Error(`Create user failed: ${createRes.status}`);
+  const user = (await createRes.json()) as { id: string };
+
+  await fetch(`${API_URL}/rest/v1/profiles`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${SERVICE_KEY}`,
+      apikey: SERVICE_KEY,
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify({ id: user.id, display_name: `storage-bk-${email.split("@")[0]}`, role: "member" }),
+  });
+  await fetch(`${API_URL}/rest/v1/organization_members`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${SERVICE_KEY}`,
+      apikey: SERVICE_KEY,
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify({ organization_id: orgId, user_id: user.id }),
+  });
+
+  const signIn = await fetch(`${API_URL}/auth/v1/token?grant_type=password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: ANON_KEY },
+    body: JSON.stringify({ email, password: "StorageBkTest_2026!" }),
+  });
+  if (!signIn.ok) throw new Error(`Sign in failed: ${signIn.status}`);
+  const session = (await signIn.json()) as { access_token: string };
+  return { id: user.id, email, accessToken: session.access_token };
+}
+
+async function cleanupStorageTestUser(userId: string, orgId: string) {
+  await fetch(`${API_URL}/rest/v1/organization_members?organization_id=eq.${orgId}&user_id=eq.${userId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+  });
+  await fetch(`${API_URL}/rest/v1/profiles?id=eq.${userId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+  });
+  await fetch(`${API_URL}/auth/v1/admin/users/${userId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+  });
+}
+
+describe("Gate 6 Corrective: Storage Binary Backup", { timeout: 120_000 }, () => {
+  let userA: StorageTestUser;
+  let caseIdA: string;
+  const uploadedPaths: string[] = [];
+  const uploadedContents: Map<string, Buffer> = new Map();
+  const ts = Date.now();
+
+  beforeAll(async () => {
+    const client = new pg.Client(DB_URL);
+    await client.connect();
+    try {
+      // Create dedicated orgs for storage binary tests
+      await client.query(
+        `INSERT INTO organizations (id, name, created_at) VALUES ($1, 'storage-binary-test-org', now()) ON CONFLICT (id) DO NOTHING`,
+        [STORAGE_TEST_ORG]
+      );
+      await client.query(
+        `INSERT INTO organizations (id, name, created_at) VALUES ($1, 'storage-binary-other-org', now()) ON CONFLICT (id) DO NOTHING`,
+        [STORAGE_OTHER_ORG]
+      );
+
+      userA = await createStorageTestUser(`sbk-a-${ts}@test.local`, STORAGE_TEST_ORG);
+
+      // Create a case in the test org
+      caseIdA = crypto.randomUUID();
+      await client.query(
+        `INSERT INTO cases (id, organization_id, title, assignee, created_by, created_at) VALUES ($1, $2, 'storage-binary-test-case', $3, $3, now())`,
+        [caseIdA, STORAGE_TEST_ORG, userA.id]
+      );
+
+      // Upload 3 test files via Storage API
+      const files = [
+        { name: `${caseIdA}/text-file-${ts}.txt`, content: Buffer.from("Hello Storage Binary Backup Test — 스토리지 바이너리 백업 테스트\n") },
+        { name: `${caseIdA}/binary-file-${ts}.bin`, content: crypto.randomBytes(256) },
+        { name: `${caseIdA}/empty-file-${ts}.dat`, content: Buffer.alloc(0) },
+      ];
+
+      for (const f of files) {
+        const res = await fetch(`${API_URL}/storage/v1/object/${BUCKET}/${f.name}`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${userA.accessToken}`,
+            apikey: ANON_KEY,
+            "Content-Type": "application/octet-stream",
+          },
+          body: f.content,
+        });
+        if (!res.ok) throw new Error(`Upload ${f.name} failed: ${res.status} ${await res.text()}`);
+        uploadedPaths.push(f.name);
+        uploadedContents.set(f.name, f.content);
+      }
+    } finally {
+      await client.end();
+    }
+  }, 60_000);
+
+  afterAll(async () => {
+    // Clean up storage objects
+    for (const p of uploadedPaths) {
+      await fetch(`${API_URL}/storage/v1/object/${BUCKET}/${p}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+      });
+    }
+    // Clean up case and orgs
+    const client = new pg.Client(DB_URL);
+    await client.connect();
+    try {
+      await client.query("DELETE FROM cases WHERE id = $1", [caseIdA]);
+      await cleanupStorageTestUser(userA.id, STORAGE_TEST_ORG);
+      await client.query("DELETE FROM organization_members WHERE organization_id IN ($1, $2)", [STORAGE_TEST_ORG, STORAGE_OTHER_ORG]);
+      await client.query("DELETE FROM organizations WHERE id IN ($1, $2)", [STORAGE_TEST_ORG, STORAGE_OTHER_ORG]);
+    } finally {
+      await client.end();
+    }
+  }, 30_000);
+
+  // ── T16: Backup with storageApiUrl includes storageFiles ────────
+  it("T16: backup with storageApiUrl includes storageFiles in archive", async () => {
+    const tmpDir = makeTmpDir();
+    try {
+      const result = await backup({
+        organizationId: STORAGE_TEST_ORG,
+        outputPath: tmpDir,
+        encryptionKey: TEST_KEY,
+        dbUrl: DB_URL,
+        storageApiUrl: API_URL,
+        storageApiKey: SERVICE_KEY,
+      });
+
+      const { decrypt } = await import("../index");
+      const decrypted = decrypt(fs.readFileSync(result.archivePath), TEST_KEY);
+      const payload = JSON.parse(decrypted.toString("utf-8"));
+
+      expect(payload.storageFiles).toBeDefined();
+      expect(Object.keys(payload.storageFiles).length).toBeGreaterThanOrEqual(2);
+    } finally {
+      cleanTmpDir(tmpDir);
+    }
+  });
+
+  // ── T17: Storage binary SHA-256 matches original ────────────────
+  it("T17: storage binary content SHA-256 matches original upload", async () => {
+    const tmpDir = makeTmpDir();
+    try {
+      const result = await backup({
+        organizationId: STORAGE_TEST_ORG,
+        outputPath: tmpDir,
+        encryptionKey: TEST_KEY,
+        dbUrl: DB_URL,
+        storageApiUrl: API_URL,
+        storageApiKey: SERVICE_KEY,
+      });
+
+      const { decrypt } = await import("../index");
+      const decrypted = decrypt(fs.readFileSync(result.archivePath), TEST_KEY);
+      const payload = JSON.parse(decrypted.toString("utf-8"));
+
+      const textFilePath = uploadedPaths.find(p => p.includes("text-file"));
+      expect(textFilePath).toBeTruthy();
+      const b64 = payload.storageFiles[textFilePath!];
+      expect(b64).toBeTruthy();
+      const restored = Buffer.from(b64, "base64");
+      const originalContent = uploadedContents.get(textFilePath!)!;
+      expect(sha256Buf(restored)).toBe(sha256Buf(originalContent));
+    } finally {
+      cleanTmpDir(tmpDir);
+    }
+  });
+
+  // ── T18: Binary file round-trip preserves exact bytes ───────────
+  it("T18: binary file round-trip preserves exact bytes", async () => {
+    const tmpDir = makeTmpDir();
+    try {
+      const result = await backup({
+        organizationId: STORAGE_TEST_ORG,
+        outputPath: tmpDir,
+        encryptionKey: TEST_KEY,
+        dbUrl: DB_URL,
+        storageApiUrl: API_URL,
+        storageApiKey: SERVICE_KEY,
+      });
+
+      const { decrypt } = await import("../index");
+      const decrypted = decrypt(fs.readFileSync(result.archivePath), TEST_KEY);
+      const payload = JSON.parse(decrypted.toString("utf-8"));
+
+      const binFilePath = uploadedPaths.find(p => p.includes("binary-file"));
+      expect(binFilePath).toBeTruthy();
+      const restored = Buffer.from(payload.storageFiles[binFilePath!], "base64");
+      const original = uploadedContents.get(binFilePath!)!;
+      expect(Buffer.compare(restored, original)).toBe(0);
+    } finally {
+      cleanTmpDir(tmpDir);
+    }
+  });
+
+  // ── T19: Manifest tracks storageFilesIncluded and counts ───────
+  it("T19: manifest tracks storageFilesIncluded flag and byte count", async () => {
+    const tmpDir = makeTmpDir();
+    try {
+      const result = await backup({
+        organizationId: STORAGE_TEST_ORG,
+        outputPath: tmpDir,
+        encryptionKey: TEST_KEY,
+        dbUrl: DB_URL,
+        storageApiUrl: API_URL,
+        storageApiKey: SERVICE_KEY,
+      });
+
+      expect(result.manifest.storageFilesIncluded).toBe(true);
+      expect(typeof result.manifest.storageFilesTotalBytes).toBe("number");
+      expect(result.manifest.storageFilesTotalBytes).toBeGreaterThan(0);
+    } finally {
+      cleanTmpDir(tmpDir);
+    }
+  });
+
+  // ── T20: Without storageApiUrl, backward compat (metadata only) ─
+  it("T20: backup without storageApiUrl still works (metadata only)", async () => {
+    const tmpDir = makeTmpDir();
+    try {
+      const result = await backup({
+        organizationId: STORAGE_TEST_ORG,
+        outputPath: tmpDir,
+        encryptionKey: TEST_KEY,
+        dbUrl: DB_URL,
+      });
+
+      expect(result.manifest.storageFilesIncluded).toBeFalsy();
+
+      const { decrypt } = await import("../index");
+      const decrypted = decrypt(fs.readFileSync(result.archivePath), TEST_KEY);
+      const payload = JSON.parse(decrypted.toString("utf-8"));
+      expect(payload.storageFiles).toBeUndefined();
+    } finally {
+      cleanTmpDir(tmpDir);
+    }
+  });
+
+  // ── T21: Storage download failure recorded, not thrown ──────────
+  it("T21: storage download failure recorded in manifest errors", async () => {
+    const tmpDir = makeTmpDir();
+    try {
+      // Use a non-existent Storage API URL to force download failures
+      const result = await backup({
+        organizationId: STORAGE_TEST_ORG,
+        outputPath: tmpDir,
+        encryptionKey: TEST_KEY,
+        dbUrl: DB_URL,
+        storageApiUrl: "http://127.0.0.1:59999",
+        storageApiKey: SERVICE_KEY,
+      });
+
+      // Should complete without throwing
+      expect(result.archivePath).toBeTruthy();
+      // Errors should be recorded for each file that failed to download
+      expect(result.manifest.storageFileErrors).toBeDefined();
+      expect(result.manifest.storageFileErrors!.length).toBeGreaterThanOrEqual(1);
+    } finally {
+      cleanTmpDir(tmpDir);
+    }
+  });
+
+  // ── T22: Cross-org storage files excluded from binary download ──
+  it("T22: cross-org storage files not downloaded", async () => {
+    const tmpDir = makeTmpDir();
+    try {
+      // Upload a file to the OTHER org's case space
+      const otherCaseId = crypto.randomUUID();
+      const client = new pg.Client(DB_URL);
+      await client.connect();
+
+      // Create a user for other org
+      const userB = await createStorageTestUser(`sbk-b-${ts}@test.local`, STORAGE_OTHER_ORG);
+      await client.query(
+        `INSERT INTO cases (id, organization_id, title, assignee, created_by, created_at) VALUES ($1, $2, 'other-org-case', $3, $3, now())`,
+        [otherCaseId, STORAGE_OTHER_ORG, userB.id]
+      );
+
+      const otherPath = `${otherCaseId}/other-org-file-${ts}.txt`;
+      await fetch(`${API_URL}/storage/v1/object/${BUCKET}/${otherPath}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${userB.accessToken}`,
+          apikey: ANON_KEY,
+          "Content-Type": "text/plain",
+        },
+        body: Buffer.from("other org data"),
+      });
+
+      try {
+        const result = await backup({
+          organizationId: STORAGE_TEST_ORG,
+          outputPath: tmpDir,
+          encryptionKey: TEST_KEY,
+          dbUrl: DB_URL,
+          storageApiUrl: API_URL,
+          storageApiKey: SERVICE_KEY,
+        });
+
+        const { decrypt } = await import("../index");
+        const decrypted = decrypt(fs.readFileSync(result.archivePath), TEST_KEY);
+        const payload = JSON.parse(decrypted.toString("utf-8"));
+
+        // Other org's file must NOT be in storageFiles
+        expect(payload.storageFiles[otherPath]).toBeUndefined();
+      } finally {
+        await fetch(`${API_URL}/storage/v1/object/${BUCKET}/${otherPath}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+        });
+        await client.query("DELETE FROM cases WHERE id = $1", [otherCaseId]);
+        await cleanupStorageTestUser(userB.id, STORAGE_OTHER_ORG);
+        await client.end();
+      }
+    } finally {
+      cleanTmpDir(tmpDir);
+    }
+  });
+
+  // ── T23: Empty storage objects → no storageFiles section ────────
+  it("T23: org with no storage objects produces no storageFiles", async () => {
+    const tmpDir = makeTmpDir();
+    const emptyOrg = "b0000000-0000-0000-0000-000000000054";
+    const client = new pg.Client(DB_URL);
+    await client.connect();
+    try {
+      await client.query(
+        `INSERT INTO organizations (id, name, created_at) VALUES ($1, 'empty-storage-org', now()) ON CONFLICT (id) DO NOTHING`,
+        [emptyOrg]
+      );
+
+      const result = await backup({
+        organizationId: emptyOrg,
+        outputPath: tmpDir,
+        encryptionKey: TEST_KEY,
+        dbUrl: DB_URL,
+        storageApiUrl: API_URL,
+        storageApiKey: SERVICE_KEY,
+      });
+
+      const { decrypt } = await import("../index");
+      const decrypted = decrypt(fs.readFileSync(result.archivePath), TEST_KEY);
+      const payload = JSON.parse(decrypted.toString("utf-8"));
+
+      // No storage files to download
+      expect(payload.storageFiles).toBeUndefined();
+      expect(result.manifest.storageFilesIncluded).toBeFalsy();
+    } finally {
+      await client.query("DELETE FROM organizations WHERE id = $1", [emptyOrg]);
+      await client.end();
+      cleanTmpDir(tmpDir);
+    }
+  });
+
+  // ── T24: Manifest file entries include content checksums ───────
+  it("T24: manifest files include content checksums for downloaded binaries", async () => {
+    const tmpDir = makeTmpDir();
+    try {
+      const result = await backup({
+        organizationId: STORAGE_TEST_ORG,
+        outputPath: tmpDir,
+        encryptionKey: TEST_KEY,
+        dbUrl: DB_URL,
+        storageApiUrl: API_URL,
+        storageApiKey: SERVICE_KEY,
+      });
+
+      // Each file entry should have a contentChecksum when binary was downloaded
+      for (const f of result.manifest.files) {
+        if (uploadedPaths.includes(f.path)) {
+          expect(f.contentChecksum).toBeDefined();
+          expect(f.contentChecksum).toMatch(/^[a-f0-9]{64}$/);
+        }
+      }
+    } finally {
+      cleanTmpDir(tmpDir);
+    }
+  });
+
+  // ── T25: No service key leaked in archive or manifest ──────────
+  it("T25: service key not present in decrypted archive or manifest", async () => {
+    const tmpDir = makeTmpDir();
+    try {
+      const result = await backup({
+        organizationId: STORAGE_TEST_ORG,
+        outputPath: tmpDir,
+        encryptionKey: TEST_KEY,
+        dbUrl: DB_URL,
+        storageApiUrl: API_URL,
+        storageApiKey: SERVICE_KEY,
+      });
+
+      const { decrypt } = await import("../index");
+      const decrypted = decrypt(fs.readFileSync(result.archivePath), TEST_KEY);
+      const payloadStr = decrypted.toString("utf-8");
+
+      expect(payloadStr).not.toContain(SERVICE_KEY);
+      expect(payloadStr).not.toContain("service_role");
+
+      const manifestStr = JSON.stringify(result.manifest);
+      expect(manifestStr).not.toContain(SERVICE_KEY);
+    } finally {
+      cleanTmpDir(tmpDir);
+    }
+  });
+});
