@@ -1,4 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { createHmac } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 import {
   encodeCursor,
   decodeCursor,
@@ -46,7 +50,21 @@ function makeCase(i: number, updatedAt?: string) {
   };
 }
 
+const TEST_SECRET_MAIN = "test-secret-value-must-be-at-least-32-bytes-long!!";
+
+function signPayload(payload: string, secret = TEST_SECRET_MAIN): string {
+  const sig = createHmac("sha256", secret).update(payload).digest("base64url");
+  return `${payload}.${sig}`;
+}
+
 describe("Slice 2 cursor pagination", () => {
+  beforeEach(() => {
+    process.env.CASE_CURSOR_HMAC_SECRET = TEST_SECRET_MAIN;
+  });
+  afterEach(() => {
+    delete process.env.CASE_CURSOR_HMAC_SECRET;
+  });
+
   describe("constants", () => {
     it("default page size is 50", () => {
       expect(DEFAULT_PAGE_SIZE).toBe(50);
@@ -93,14 +111,14 @@ describe("Slice 2 cursor pagination", () => {
 
   describe("cursor encode/decode", () => {
     it("round-trips correctly", () => {
-      const cursor = encodeCursor("2026-09-13T10:00:00Z", "abc-123");
+      const cursor = encodeCursor("2026-09-13T10:00:00Z", "a0000000-0000-0000-0000-000000000123");
       const decoded = decodeCursor(cursor);
       expect(decoded.updatedAt).toBe("2026-09-13T10:00:00Z");
-      expect(decoded.id).toBe("abc-123");
+      expect(decoded.id).toBe("a0000000-0000-0000-0000-000000000123");
     });
 
     it("produces an opaque non-empty string", () => {
-      const cursor = encodeCursor("2026-09-13T10:00:00Z", "abc-123");
+      const cursor = encodeCursor("2026-09-13T10:00:00Z", "a0000000-0000-0000-0000-000000000123");
       expect(typeof cursor).toBe("string");
       expect(cursor.length).toBeGreaterThan(0);
     });
@@ -114,29 +132,29 @@ describe("Slice 2 cursor pagination", () => {
     });
 
     it("rejects cursor with missing fields", () => {
-      const bad = Buffer.from(JSON.stringify({ v: 1 })).toString("base64url");
-      expect(() => decodeCursor(bad)).toThrow();
+      const payload = Buffer.from(JSON.stringify({ v: 1 })).toString("base64url");
+      expect(() => decodeCursor(signPayload(payload))).toThrow();
     });
 
     it("rejects cursor with wrong version", () => {
-      const bad = Buffer.from(
-        JSON.stringify({ v: 999, ua: "2026-09-13T10:00:00Z", id: "x" }),
+      const payload = Buffer.from(
+        JSON.stringify({ v: 999, ua: "2026-09-13T10:00:00Z", id: "a0000000-0000-0000-0000-000000000001" }),
       ).toString("base64url");
-      expect(() => decodeCursor(bad)).toThrow();
+      expect(() => decodeCursor(signPayload(payload))).toThrow();
     });
 
     it("rejects cursor with non-string id", () => {
-      const bad = Buffer.from(
+      const payload = Buffer.from(
         JSON.stringify({ v: 1, ua: "2026-09-13T10:00:00Z", id: 123 }),
       ).toString("base64url");
-      expect(() => decodeCursor(bad)).toThrow();
+      expect(() => decodeCursor(signPayload(payload))).toThrow();
     });
 
     it("rejects cursor with non-string updatedAt", () => {
-      const bad = Buffer.from(
-        JSON.stringify({ v: 1, ua: null, id: "x" }),
+      const payload = Buffer.from(
+        JSON.stringify({ v: 1, ua: null, id: "a0000000-0000-0000-0000-000000000001" }),
       ).toString("base64url");
-      expect(() => decodeCursor(bad)).toThrow();
+      expect(() => decodeCursor(signPayload(payload))).toThrow();
     });
   });
 
@@ -222,5 +240,179 @@ describe("Slice 2 cursor pagination", () => {
       expect(decoded.updatedAt).toBe(lastItem.updated_at);
       expect(decoded.id).toBe(lastItem.id);
     });
+  });
+});
+
+describe("cursor integrity (HMAC)", () => {
+  const TEST_SECRET = "test-secret-value-must-be-at-least-32-bytes-long!!";
+  const VALID_TS = "2026-09-13T10:00:00Z";
+  const VALID_ID = "c0000001-0000-0000-0000-000000000000";
+
+  beforeEach(() => {
+    process.env.CASE_CURSOR_HMAC_SECRET = TEST_SECRET;
+  });
+  afterEach(() => {
+    delete process.env.CASE_CURSOR_HMAC_SECRET;
+  });
+
+  // 1. Signed cursor round-trips
+  it("signed cursor round-trips correctly", () => {
+    const cursor = encodeCursor(VALID_TS, VALID_ID);
+    const decoded = decodeCursor(cursor);
+    expect(decoded.updatedAt).toBe(VALID_TS);
+    expect(decoded.id).toBe(VALID_ID);
+  });
+
+  // 2. Unsigned legacy cursor rejected
+  it("rejects unsigned legacy cursor", () => {
+    const unsigned = Buffer.from(
+      JSON.stringify({ v: 1, ua: VALID_TS, id: VALID_ID }),
+    ).toString("base64url");
+    expect(() => decodeCursor(unsigned)).toThrow();
+  });
+
+  // 3. Tampered timestamp (well-formed)
+  it("rejects cursor with well-formed tampered timestamp", () => {
+    const cursor = encodeCursor(VALID_TS, VALID_ID);
+    const parts = cursor.split(".");
+    const payloadStr = parts.length > 1 ? parts[0] : cursor;
+    const obj = JSON.parse(Buffer.from(payloadStr, "base64url").toString());
+    obj.ua = "2026-01-01T00:00:00Z";
+    const tampered = Buffer.from(JSON.stringify(obj)).toString("base64url");
+    const forged = parts.length > 1 ? `${tampered}.${parts[1]}` : tampered;
+    expect(() => decodeCursor(forged)).toThrow();
+  });
+
+  // 4. Tampered UUID (well-formed)
+  it("rejects cursor with well-formed tampered UUID", () => {
+    const cursor = encodeCursor(VALID_TS, VALID_ID);
+    const parts = cursor.split(".");
+    const payloadStr = parts.length > 1 ? parts[0] : cursor;
+    const obj = JSON.parse(Buffer.from(payloadStr, "base64url").toString());
+    obj.id = "c9999999-0000-0000-0000-000000000000";
+    const tampered = Buffer.from(JSON.stringify(obj)).toString("base64url");
+    const forged = parts.length > 1 ? `${tampered}.${parts[1]}` : tampered;
+    expect(() => decodeCursor(forged)).toThrow();
+  });
+
+  // 5. Signed cursor contains signature separator
+  it("cursor contains signature separator", () => {
+    const cursor = encodeCursor(VALID_TS, VALID_ID);
+    expect(cursor).toContain(".");
+  });
+
+  // 6. Different secret rejects cursor
+  it("rejects cursor signed with different secret", () => {
+    const cursor = encodeCursor(VALID_TS, VALID_ID);
+    process.env.CASE_CURSOR_HMAC_SECRET =
+      "different-secret-also-at-least-32-bytes-long!!!!";
+    expect(() => decodeCursor(cursor)).toThrow();
+  });
+
+  // 7. No signature component
+  it("rejects cursor with no signature component", () => {
+    const payloadOnly = Buffer.from(
+      JSON.stringify({ v: 1, ua: VALID_TS, id: VALID_ID }),
+    ).toString("base64url");
+    expect(() => decodeCursor(payloadOnly)).toThrow(/signature/);
+  });
+
+  // 8. Signature length mismatch
+  it("rejects cursor with wrong signature length", () => {
+    const payload = Buffer.from(
+      JSON.stringify({ v: 1, ua: VALID_TS, id: VALID_ID }),
+    ).toString("base64url");
+    expect(() => decodeCursor(`${payload}.abc`)).toThrow();
+  });
+
+  // 9. Secret missing
+  it("rejects when secret is not set", () => {
+    delete process.env.CASE_CURSOR_HMAC_SECRET;
+    expect(() => encodeCursor(VALID_TS, VALID_ID)).toThrow();
+  });
+
+  // 10. Secret too short
+  it("rejects when secret is shorter than 32 bytes", () => {
+    process.env.CASE_CURSOR_HMAC_SECRET = "short";
+    expect(() => encodeCursor(VALID_TS, VALID_ID)).toThrow();
+  });
+
+  // 11. Unsupported version (properly signed)
+  it("rejects properly signed cursor with unsupported version", () => {
+    const payload = Buffer.from(
+      JSON.stringify({ v: 999, ua: VALID_TS, id: VALID_ID }),
+    ).toString("base64url");
+    const sig = createHmac("sha256", TEST_SECRET)
+      .update(payload)
+      .digest("base64url");
+    expect(() => decodeCursor(`${payload}.${sig}`)).toThrow(/version/);
+  });
+
+  // 12. Invalid ISO timestamp (properly signed)
+  it("rejects properly signed cursor with invalid timestamp", () => {
+    const payload = Buffer.from(
+      JSON.stringify({ v: 1, ua: "not-a-date", id: VALID_ID }),
+    ).toString("base64url");
+    const sig = createHmac("sha256", TEST_SECRET)
+      .update(payload)
+      .digest("base64url");
+    expect(() => decodeCursor(`${payload}.${sig}`)).toThrow();
+  });
+
+  // 13. Invalid UUID (properly signed)
+  it("rejects properly signed cursor with invalid UUID", () => {
+    const payload = Buffer.from(
+      JSON.stringify({ v: 1, ua: VALID_TS, id: "not-a-uuid" }),
+    ).toString("base64url");
+    const sig = createHmac("sha256", TEST_SECRET)
+      .update(payload)
+      .digest("base64url");
+    expect(() => decodeCursor(`${payload}.${sig}`)).toThrow();
+  });
+
+  // 14. Oversized token
+  it("rejects oversized cursor token", () => {
+    const oversizedPayload = Buffer.from(
+      JSON.stringify({ v: 1, ua: VALID_TS, id: VALID_ID, extra: "x".repeat(500) }),
+    ).toString("base64url");
+    expect(() => decodeCursor(oversizedPayload)).toThrow();
+  });
+
+  // 15. Error messages don't leak secret
+  it("does not leak secret in error messages", () => {
+    const badCursor = "definitely-not-valid";
+    try {
+      decodeCursor(badCursor);
+    } catch (e) {
+      const msg = (e as Error).message;
+      expect(msg).not.toContain(TEST_SECRET);
+      return;
+    }
+    throw new Error("expected decodeCursor to throw");
+  });
+
+  // 16. Valid cursor fetches next page
+  it("fetches next page with valid signed cursor", async () => {
+    const rows = Array.from({ length: 51 }, (_, i) => makeCase(i));
+    const { db } = fakePaginationDb(rows);
+    const page1 = await fetchCasePage(db, {});
+    expect(page1.nextCursor).not.toBeNull();
+    const page2Rows = Array.from({ length: 10 }, (_, i) => makeCase(i + 50));
+    const { db: db2 } = fakePaginationDb(page2Rows);
+    const page2 = await fetchCasePage(db2, { cursor: page1.nextCursor! });
+    expect(page2.items.length).toBe(10);
+  });
+
+  // 17. Client bundle does not reference secret
+  it("client component does not reference cursor secret", () => {
+    const testDir = dirname(fileURLToPath(import.meta.url));
+    const clientPath = resolve(
+      testDir,
+      "../../../components/case-pagination.tsx",
+    );
+    const content = readFileSync(clientPath, "utf-8");
+    expect(content).not.toContain("CASE_CURSOR_HMAC_SECRET");
+    expect(content).not.toContain("createHmac");
+    expect(content).not.toContain("node:crypto");
   });
 });

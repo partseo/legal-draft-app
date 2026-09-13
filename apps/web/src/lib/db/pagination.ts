@@ -1,13 +1,31 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const DEFAULT_PAGE_SIZE = 50;
 export const MAX_PAGE_SIZE = 100;
 const CURSOR_VERSION = 1;
+const MAX_CURSOR_LENGTH = 512;
+const MIN_SECRET_BYTES = 32;
+
+const ISO_TS_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function getCursorSecret(): Buffer {
+  const raw = process.env.CASE_CURSOR_HMAC_SECRET;
+  if (!raw) throw new Error("cursor signing secret is not configured");
+  const buf = Buffer.from(raw, "utf-8");
+  if (buf.length < MIN_SECRET_BYTES)
+    throw new Error("cursor signing secret is too short");
+  return buf;
+}
 
 export function encodeCursor(updatedAt: string, id: string): string {
-  return Buffer.from(
+  const secret = getCursorSecret();
+  const payload = Buffer.from(
     JSON.stringify({ v: CURSOR_VERSION, ua: updatedAt, id }),
   ).toString("base64url");
+  const sig = createHmac("sha256", secret).update(payload).digest("base64url");
+  return `${payload}.${sig}`;
 }
 
 export function decodeCursor(cursor: string): {
@@ -15,10 +33,40 @@ export function decodeCursor(cursor: string): {
   id: string;
 } {
   if (!cursor) throw new Error("cursor must be a non-empty string");
+  if (cursor.length > MAX_CURSOR_LENGTH)
+    throw new Error("invalid cursor: exceeds maximum length");
+
+  const dotIdx = cursor.indexOf(".");
+  if (dotIdx < 0) throw new Error("invalid cursor: missing signature");
+
+  const payloadStr = cursor.slice(0, dotIdx);
+  const sigStr = cursor.slice(dotIdx + 1);
+  if (!sigStr) throw new Error("invalid cursor: empty signature");
+
+  const secret = getCursorSecret();
+  const expected = createHmac("sha256", secret)
+    .update(payloadStr)
+    .digest();
+
+  let sigBuf: Buffer;
+  try {
+    sigBuf = Buffer.from(sigStr, "base64url");
+  } catch {
+    throw new Error("invalid cursor: signature verification failed");
+  }
+
+  if (
+    sigBuf.length !== expected.length ||
+    !timingSafeEqual(sigBuf, expected)
+  ) {
+    throw new Error("invalid cursor: signature verification failed");
+  }
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf-8"));
+    parsed = JSON.parse(
+      Buffer.from(payloadStr, "base64url").toString("utf-8"),
+    );
   } catch {
     throw new Error("invalid cursor: malformed encoding");
   }
@@ -44,7 +92,14 @@ export function decodeCursor(cursor: string): {
     throw new Error("invalid cursor: id must be a string");
   }
 
-  return { updatedAt: obj.ua, id: obj.id };
+  if (!ISO_TS_RE.test(obj.ua as string)) {
+    throw new Error("invalid cursor: malformed timestamp");
+  }
+  if (!UUID_RE.test(obj.id as string)) {
+    throw new Error("invalid cursor: malformed id");
+  }
+
+  return { updatedAt: obj.ua as string, id: obj.id as string };
 }
 
 export function validateLimit(limit: unknown): number {
@@ -61,7 +116,13 @@ export function validateLimit(limit: unknown): number {
 }
 
 export type CasePage = {
-  items: { id: string; title: string; status: string; updated_at: string; [k: string]: unknown }[];
+  items: {
+    id: string;
+    title: string;
+    status: string;
+    updated_at: string;
+    [k: string]: unknown;
+  }[];
   nextCursor: string | null;
   hasNextPage: boolean;
 };
