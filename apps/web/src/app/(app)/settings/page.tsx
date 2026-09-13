@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Bot, ChevronDown, Info, Landmark, MoreHorizontal, Plug } from "lucide-react";
 import { createRouteClient, createServiceClient } from "@/lib/db/clients";
+import { fetchUsageTotals } from "@/lib/db/usage";
 import { getEnv } from "@/lib/env";
 import { computeHealth } from "@/lib/health";
 import { TOOL_COUNTS } from "@/lib/mcp/korean-law-registry.mjs";
@@ -175,10 +176,7 @@ async function IntegrationsTab() {
 
 async function UsageTab() {
   const supabase = await createRouteClient();
-  const { data: runs } = await supabase.from("runs").select("input_tokens, output_tokens, cost_usd, round_id");
-
-  const totalCost = (runs ?? []).reduce((s, r) => s + Number(r.cost_usd), 0);
-  const count = runs?.length ?? 0;
+  const { totalCost, runCount: count } = await fetchUsageTotals(supabase);
   const avg = count > 0 ? totalCost / count : 0;
 
   return (
