@@ -10,12 +10,14 @@ export function CasePagination({
   nextCursor,
   hasPrevPage,
   searchQuery,
+  filters,
 }: {
   count: number;
   hasNextPage: boolean;
   nextCursor: string | null;
   hasPrevPage: boolean;
   searchQuery?: string;
+  filters?: { status?: string; assignee?: string; from?: string; to?: string };
 }) {
   const router = useRouter();
 
@@ -23,6 +25,10 @@ export function CasePagination({
     const params = new URLSearchParams();
     if (nextCursor) params.set("cursor", nextCursor);
     if (searchQuery) params.set("q", searchQuery);
+    if (filters?.status) params.set("status", filters.status);
+    if (filters?.assignee) params.set("assignee", filters.assignee);
+    if (filters?.from) params.set("from", filters.from);
+    if (filters?.to) params.set("to", filters.to);
     return `/?${params.toString()}`;
   }
 

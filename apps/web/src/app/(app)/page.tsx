@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Plus, ChevronDown } from "lucide-react";
 import { createRouteClient } from "@/lib/db/clients";
 import { CaseRow } from "@/components/case-row";
-import { fetchCasePage } from "@/lib/db/pagination";
+import { fetchCasePage, type CaseFilters } from "@/lib/db/pagination";
 import { CasePagination } from "@/components/case-pagination";
 import { CaseSearchInput } from "@/components/case-search-input";
 
@@ -19,8 +19,16 @@ export default async function CasesPage({
   const cursor =
     typeof params.cursor === "string" ? params.cursor : undefined;
   const q = typeof params.q === "string" ? params.q : undefined;
+  const status = typeof params.status === "string" ? params.status : undefined;
+  const assignee = typeof params.assignee === "string" ? params.assignee : undefined;
+  const from = typeof params.from === "string" ? params.from : undefined;
+  const to = typeof params.to === "string" ? params.to : undefined;
+  const filters: CaseFilters | undefined =
+    status || assignee || from || to
+      ? { status, assignee, from, to }
+      : undefined;
   const supabase = await createRouteClient();
-  const page = await fetchCasePage(supabase, { cursor, search: q });
+  const page = await fetchCasePage(supabase, { cursor, search: q, filters });
 
   return (
     <div className="flex flex-col gap-6 p-9">
@@ -87,6 +95,7 @@ export default async function CasesPage({
             nextCursor={page.nextCursor}
             hasPrevPage={!!cursor}
             searchQuery={q}
+            filters={filters}
           />
         </>
       )}
