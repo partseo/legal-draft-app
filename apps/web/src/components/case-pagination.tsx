@@ -9,13 +9,22 @@ export function CasePagination({
   hasNextPage,
   nextCursor,
   hasPrevPage,
+  searchQuery,
 }: {
   count: number;
   hasNextPage: boolean;
   nextCursor: string | null;
   hasPrevPage: boolean;
+  searchQuery?: string;
 }) {
   const router = useRouter();
+
+  function buildNextHref() {
+    const params = new URLSearchParams();
+    if (nextCursor) params.set("cursor", nextCursor);
+    if (searchQuery) params.set("q", searchQuery);
+    return `/?${params.toString()}`;
+  }
 
   return (
     <div className="flex items-center justify-between">
@@ -35,7 +44,7 @@ export function CasePagination({
         )}
         {hasNextPage && nextCursor && (
           <Link
-            href={`/?cursor=${encodeURIComponent(nextCursor)}`}
+            href={buildNextHref()}
             className="flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
           >
             다음 {count}건

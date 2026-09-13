@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { Plus, Search, ChevronDown } from "lucide-react";
+import { Plus, ChevronDown } from "lucide-react";
 import { createRouteClient } from "@/lib/db/clients";
 import { CaseRow } from "@/components/case-row";
 import { fetchCasePage } from "@/lib/db/pagination";
 import { CasePagination } from "@/components/case-pagination";
+import { CaseSearchInput } from "@/components/case-search-input";
 
 export const dynamic = "force-dynamic";
 
@@ -17,8 +18,9 @@ export default async function CasesPage({
   const params = await searchParams;
   const cursor =
     typeof params.cursor === "string" ? params.cursor : undefined;
+  const q = typeof params.q === "string" ? params.q : undefined;
   const supabase = await createRouteClient();
-  const page = await fetchCasePage(supabase, { cursor });
+  const page = await fetchCasePage(supabase, { cursor, search: q });
 
   return (
     <div className="flex flex-col gap-6 p-9">
@@ -36,13 +38,10 @@ export default async function CasesPage({
         <span className="flex items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-950">
           담당자: 전체 <ChevronDown className="size-4 text-neutral-500" />
         </span>
-        <span className="flex w-[260px] items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-500">
-          <Search className="size-4" />
-          사건명 검색
-        </span>
+        <CaseSearchInput defaultValue={q} />
       </div>
 
-      {page.items.length === 0 && !cursor ? (
+      {page.items.length === 0 && !cursor && !q ? (
         <div className="flex flex-col items-center justify-center gap-5 rounded-lg border border-neutral-200 bg-white p-10 py-24">
           <div className="flex flex-col items-center gap-1.5">
             <p className="text-[15px] font-semibold text-neutral-950">아직 사건이 없습니다.</p>
@@ -87,6 +86,7 @@ export default async function CasesPage({
             hasNextPage={page.hasNextPage}
             nextCursor={page.nextCursor}
             hasPrevPage={!!cursor}
+            searchQuery={q}
           />
         </>
       )}
