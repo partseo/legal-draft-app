@@ -8,6 +8,8 @@ export interface RestoreOptions {
   encryptionKey: Buffer;
   targetDbName?: string;
   sourceDbUrl?: string;
+  storageApiUrl?: string;
+  storageApiKey?: string;
 }
 
 export interface RestoreResult {
@@ -17,6 +19,8 @@ export interface RestoreResult {
   restoredRows: Record<string, number>;
   totalRows: number;
   integrityMatch: boolean;
+  storageFilesUploaded?: number;
+  storageUploadErrors?: string[];
 }
 
 const ENUM_DEFINITIONS: Record<string, string[]> = {
@@ -131,6 +135,36 @@ const RESTORE_ORDER = [
   "case_files",
   "storage_objects",
 ];
+
+async function uploadStorageFile(
+  apiUrl: string,
+  apiKey: string,
+  bucket: string,
+  objectName: string,
+  content: Buffer,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const encoded = objectName.split("/").map(s => encodeURIComponent(s)).join("/");
+    const url = `${apiUrl}/storage/v1/object/${bucket}/${encoded}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        apikey: apiKey,
+        "Content-Type": "application/octet-stream",
+      },
+      body: content,
+    });
+    if (!res.ok) {
+      const txt = await res.text();
+      return { ok: false, error: `HTTP ${res.status}: ${txt}` };
+    }
+    return { ok: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: msg };
+  }
+}
 
 function sha256(data: string | Buffer): string {
   return crypto.createHash("sha256").update(data).digest("hex");
@@ -346,6 +380,45 @@ export async function restore(options: RestoreOptions): Promise<RestoreResult> {
       if (checksum !== info.checksum) integrityMatch = false;
     }
 
+    // Upload storage binaries to target Storage API
+    let storageFilesUploaded = 0;
+    const storageUploadErrors: string[] = [];
+    const storageFiles = payload.storageFiles as Record<string, string> | undefined;
+    if (options.storageApiUrl && options.storageApiKey && storageFiles) {
+      // Ensure bucket exists
+      const bucketRes = await fetch(`${options.storageApiUrl}/storage/v1/bucket`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${options.storageApiKey}`,
+          apikey: options.storageApiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ id: "case-files", name: "case-files", public: false }),
+      });
+      if (!bucketRes.ok) {
+        const txt = await bucketRes.text();
+        if (!txt.includes("already exists")) {
+          storageUploadErrors.push(`Bucket creation failed: ${txt}`);
+        }
+      }
+
+      for (const [key, b64] of Object.entries(storageFiles)) {
+        const content = Buffer.from(b64, "base64");
+        const result = await uploadStorageFile(
+          options.storageApiUrl,
+          options.storageApiKey,
+          "case-files",
+          key,
+          content,
+        );
+        if (result.ok) {
+          storageFilesUploaded++;
+        } else {
+          storageUploadErrors.push(`${key}: ${result.error}`);
+        }
+      }
+    }
+
     return {
       targetDbUrl: targetUrl,
       targetDbName: dbName,
@@ -353,6 +426,8 @@ export async function restore(options: RestoreOptions): Promise<RestoreResult> {
       restoredRows,
       totalRows,
       integrityMatch,
+      storageFilesUploaded: storageFilesUploaded > 0 ? storageFilesUploaded : undefined,
+      storageUploadErrors: storageUploadErrors.length > 0 ? storageUploadErrors : undefined,
     };
   } catch (err) {
     // Clean up on failure

@@ -647,3 +647,221 @@ describe("Gate 7 Corrected: Cross-Stack Isolated Restore", { timeout: 120_000 },
     }
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// Gate 7 Strict: Storage Binary Restore Round-Trip (R31-R35)
+// ═══════════════════════════════════════════════════════════════════
+
+const TARGET_STORAGE_API = "http://127.0.0.1:54331";
+const GATE7_STRICT_ORG = "c0000000-0000-0000-0000-000000000710";
+
+describe("Gate 7 Strict: Storage Binary Restore Round-Trip", { timeout: 120_000 }, () => {
+  let targetAvailableStrict = false;
+  let backupArchiveStrict: string;
+  let tmpDirStrict: string;
+  let restoreResultStrict: Awaited<ReturnType<typeof restore>>;
+  const targetCreatedDbsStrict: string[] = [];
+  const uploadedKeys: string[] = [];
+  const uploadedContents: Map<string, Buffer> = new Map();
+  const ts7 = Date.now();
+
+  beforeAll(async () => {
+    targetAvailableStrict = await isTargetStackAvailable();
+    if (!targetAvailableStrict) return;
+
+    // Create test data on source with storage files
+    const sourceClient = new pg.Client(DB_URL);
+    await sourceClient.connect();
+    try {
+      const userId = "c0000000-0000-0000-0000-000000000711";
+      await sourceClient.query(
+        `INSERT INTO auth.users (id, email) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [userId, `gate7strict-${ts7}@test.local`]
+      );
+      await sourceClient.query(
+        `INSERT INTO organizations (id, name) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [GATE7_STRICT_ORG, "Gate 7 Strict Org"]
+      );
+      await sourceClient.query(
+        `INSERT INTO profiles (id, display_name, role) VALUES ($1, $2, 'member') ON CONFLICT DO NOTHING`,
+        [userId, "Gate 7 Strict User"]
+      );
+      await sourceClient.query(
+        `INSERT INTO organization_members (organization_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [GATE7_STRICT_ORG, userId]
+      );
+
+      const caseId = "c0000000-0000-0000-0000-000000000712";
+      await sourceClient.query(
+        `INSERT INTO cases (id, title, organization_id, assignee, created_by, created_at) VALUES ($1, $2, $3, $4, $4, now()) ON CONFLICT DO NOTHING`,
+        [caseId, "Gate7 Strict Case", GATE7_STRICT_ORG, userId]
+      );
+
+      // Upload 3 files to source Storage
+      const files = [
+        { key: `${caseId}/${crypto.randomUUID()}.txt`, content: Buffer.from("한글 스토리지 복원 테스트\n"), displayName: "한글테스트.txt" },
+        { key: `${caseId}/${crypto.randomUUID()}.bin`, content: crypto.randomBytes(512), displayName: "바이너리.bin" },
+        { key: `${caseId}/${crypto.randomUUID()}.pdf`, content: Buffer.from("%PDF-1.4 gate7 strict test\n"), displayName: "소장초안.pdf" },
+      ];
+
+      for (const f of files) {
+        const encodedKey = f.key.split("/").map(s => encodeURIComponent(s)).join("/");
+        const res = await fetch(`${SOURCE_API}/storage/v1/object/case-files/${encodedKey}`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${SERVICE_KEY}`,
+            apikey: SERVICE_KEY,
+            "Content-Type": "application/octet-stream",
+          },
+          body: f.content,
+        });
+        if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+        uploadedKeys.push(f.key);
+        uploadedContents.set(f.key, f.content);
+
+        const cfId = crypto.randomUUID();
+        await sourceClient.query(
+          `INSERT INTO case_files (id, case_id, kind, filename, storage_path, version, uploaded_by, created_at)
+           VALUES ($1, $2, '입력', $3, $4, 1, $5, now()) ON CONFLICT DO NOTHING`,
+          [cfId, caseId, f.displayName, f.key, userId]
+        );
+      }
+    } finally {
+      await sourceClient.end();
+    }
+
+    // Backup from source with storage binaries
+    tmpDirStrict = makeTmpDir();
+    const r = await backup({
+      organizationId: GATE7_STRICT_ORG,
+      outputPath: tmpDirStrict,
+      encryptionKey: TEST_KEY,
+      dbUrl: DB_URL,
+      storageApiUrl: SOURCE_API,
+      storageApiKey: SERVICE_KEY,
+    });
+    backupArchiveStrict = r.archivePath;
+
+    // Restore to target with storage upload
+    const dbName = `gate7strict_${ts7}`;
+    targetCreatedDbsStrict.push(dbName);
+    restoreResultStrict = await restore({
+      archivePath: backupArchiveStrict,
+      encryptionKey: TEST_KEY,
+      targetDbName: dbName,
+      sourceDbUrl: TARGET_DB_URL,
+      storageApiUrl: TARGET_STORAGE_API,
+      storageApiKey: SERVICE_KEY,
+    });
+  }, 60_000);
+
+  afterAll(async () => {
+    // Cleanup uploaded source storage files
+    for (const key of uploadedKeys) {
+      const encodedKey = key.split("/").map(s => encodeURIComponent(s)).join("/");
+      await fetch(`${SOURCE_API}/storage/v1/object/case-files/${encodedKey}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+      });
+    }
+
+    // Cleanup target DBs
+    for (const db of targetCreatedDbsStrict) {
+      try { await dropIsolatedDb(db, TARGET_DB_URL); } catch {}
+    }
+
+    // Cleanup target storage files
+    for (const key of uploadedKeys) {
+      const encodedKey = key.split("/").map(s => encodeURIComponent(s)).join("/");
+      await fetch(`${TARGET_STORAGE_API}/storage/v1/object/case-files/${encodedKey}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+      });
+    }
+
+    // Cleanup source test data
+    const sourceClient = new pg.Client(DB_URL);
+    await sourceClient.connect();
+    try {
+      await sourceClient.query("DELETE FROM case_files WHERE case_id = 'c0000000-0000-0000-0000-000000000712'");
+      await sourceClient.query("DELETE FROM cases WHERE id = 'c0000000-0000-0000-0000-000000000712'");
+      await sourceClient.query("DELETE FROM organization_members WHERE organization_id = $1", [GATE7_STRICT_ORG]);
+      await sourceClient.query("DELETE FROM profiles WHERE id = 'c0000000-0000-0000-0000-000000000711'");
+      await sourceClient.query("DELETE FROM auth.users WHERE id = 'c0000000-0000-0000-0000-000000000711'");
+      await sourceClient.query("DELETE FROM organizations WHERE id = $1", [GATE7_STRICT_ORG]);
+    } finally {
+      await sourceClient.end();
+    }
+
+    cleanTmpDir(tmpDirStrict);
+  }, 30_000);
+
+  // ── R31: Storage binaries uploaded to target ────────────────────
+  it("R31: storage binaries uploaded to target Storage API", () => {
+    if (!targetAvailableStrict) return;
+    expect(restoreResultStrict.storageFilesUploaded).toBe(uploadedKeys.length);
+    expect(restoreResultStrict.storageUploadErrors).toBeUndefined();
+  });
+
+  // ── R32: Downloaded content matches original ───────────────────
+  it("R32: downloaded content from target matches original bytes", async () => {
+    if (!targetAvailableStrict) return;
+
+    for (const key of uploadedKeys) {
+      const encodedKey = key.split("/").map(s => encodeURIComponent(s)).join("/");
+      const res = await fetch(`${TARGET_STORAGE_API}/storage/v1/object/authenticated/case-files/${encodedKey}`, {
+        headers: {
+          Authorization: `Bearer ${SERVICE_KEY}`,
+          apikey: SERVICE_KEY,
+        },
+      });
+      expect(res.ok).toBe(true);
+      const downloaded = Buffer.from(await res.arrayBuffer());
+      const original = uploadedContents.get(key)!;
+      expect(downloaded.length).toBe(original.length);
+      expect(
+        crypto.createHash("sha256").update(downloaded).digest("hex")
+      ).toBe(
+        crypto.createHash("sha256").update(original).digest("hex")
+      );
+    }
+  });
+
+  // ── R33: case_files display names preserved in target DB ───────
+  it("R33: case_files Korean display names restored in target DB", async () => {
+    if (!targetAvailableStrict) return;
+    const client = new pg.Client(restoreResultStrict.targetDbUrl);
+    await client.connect();
+    try {
+      const r = await client.query("SELECT filename FROM case_files ORDER BY filename");
+      const names = r.rows.map((row: { filename: string }) => row.filename);
+      expect(names).toContain("한글테스트.txt");
+      expect(names).toContain("바이너리.bin");
+      expect(names).toContain("소장초안.pdf");
+    } finally {
+      await client.end();
+    }
+  });
+
+  // ── R34: Restore without storageApiUrl skips upload ────────────
+  it("R34: restore without storageApiUrl does not upload binaries", async () => {
+    if (!targetAvailableStrict) return;
+    const dbName = `gate7nostore_${ts7}`;
+    targetCreatedDbsStrict.push(dbName);
+    const result = await restore({
+      archivePath: backupArchiveStrict,
+      encryptionKey: TEST_KEY,
+      targetDbName: dbName,
+      sourceDbUrl: TARGET_DB_URL,
+    });
+    expect(result.storageFilesUploaded).toBeUndefined();
+    expect(result.storageUploadErrors).toBeUndefined();
+    expect(result.integrityMatch).toBe(true);
+  });
+
+  // ── R35: Integrity match on storage-binary restore ─────────────
+  it("R35: integrity checksums match after storage binary restore", () => {
+    if (!targetAvailableStrict) return;
+    expect(restoreResultStrict.integrityMatch).toBe(true);
+  });
+});
