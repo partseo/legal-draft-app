@@ -569,7 +569,7 @@ describe("Organization RLS Integration Tests", () => {
     const OBJ_A = "ff000001-0000-0000-0000-000000000001";
     const OBJ_B = "ff000001-0000-0000-0000-000000000002";
     const PATH_A = `${CASE_ORG1}/test_doc_a.pdf`;
-    const PATH_B = `${CASE_ORG3}/test_doc_b.pdf`;
+    // PATH_B reserved for future cross-org storage tests
 
     it("L1: ORG_A member can SELECT own storage object", async () => {
       await client.query("BEGIN");

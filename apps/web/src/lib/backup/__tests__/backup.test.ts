@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { backup, type BackupOptions, type BackupResult } from "../index";
+import { backup, type BackupOptions } from "../index";
 import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -165,7 +165,7 @@ describe("Gate 6: Organization Backup TDD", () => {
 
       // Decrypt using the same key — the module should export a decrypt util
       const { decrypt } = await import("../index");
-      const decrypted = await (decrypt as Function)(archiveBytes, TEST_KEY);
+      const decrypted = await (decrypt as (buf: Buffer, key: Buffer) => Buffer)(archiveBytes, TEST_KEY);
       expect(decrypted).toBeDefined();
       expect(decrypted.length).toBeGreaterThan(0);
     } finally {
@@ -247,13 +247,14 @@ describe("Gate 6: Organization Backup TDD", () => {
         dbUrl: DB_URL,
       });
 
-      for (const [table, info] of Object.entries(result.manifest.tables)) {
+      for (const [, info] of Object.entries(result.manifest.tables)) {
         expect(info.checksum).toMatch(/^[a-f0-9]{64}$/);
       }
 
       // Verify at least one table checksum by recomputing
       const { verifyChecksum } = await import("../index");
-      const valid = await (verifyChecksum as Function)(
+      type VerifyFn = (path: string, key: Buffer, manifest: unknown) => Promise<boolean>;
+      const valid = await (verifyChecksum as VerifyFn)(
         result.archivePath,
         TEST_KEY,
         result.manifest

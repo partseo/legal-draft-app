@@ -355,7 +355,8 @@ export async function restore(options: RestoreOptions): Promise<RestoreResult> {
 
       if (tableName === "storage_objects") {
         const filtered = rows.map((r) => {
-          const { path_tokens, ...rest } = r as Record<string, unknown> & { path_tokens?: unknown };
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { path_tokens: _, ...rest } = r as Record<string, unknown> & { path_tokens?: unknown };
           return rest;
         });
         const count = await insertRows(targetClient, "storage.objects", filtered);
