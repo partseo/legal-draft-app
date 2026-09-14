@@ -946,7 +946,7 @@ describe("Gate 6 Strict: Storage Fidelity and Fail-Closed", { timeout: 120_000 }
             apikey: ANON_KEY,
             "Content-Type": "application/octet-stream",
           },
-          body: f.content,
+          body: f.content as unknown as BodyInit,
         });
         if (!res.ok) {
           const txt = await res.text();

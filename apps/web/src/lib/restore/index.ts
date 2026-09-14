@@ -153,7 +153,7 @@ async function uploadStorageFile(
         apikey: apiKey,
         "Content-Type": "application/octet-stream",
       },
-      body: content,
+      body: content as unknown as BodyInit,
     });
     if (!res.ok) {
       const txt = await res.text();
