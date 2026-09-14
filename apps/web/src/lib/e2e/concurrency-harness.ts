@@ -21,7 +21,10 @@ export interface ConcurrencyMetrics {
   durationMs: number;
   opsPerSecond: number;
   crossOrgLeaks: number;
+  crossOrgAttackBlocks: number;
+  crossOrgAttackAttempts: number;
   errorDetails: string[];
+  opBreakdown: Record<string, { count: number; errors: number }>;
 }
 
 export interface HarnessOptions {
@@ -31,6 +34,7 @@ export interface HarnessOptions {
   userCount: number;
   orgCount: number;
   opsPerUser: number;
+  durationMinutes?: number;
 }
 
 function percentile(sorted: number[], p: number): number {
@@ -73,7 +77,6 @@ export async function createTestUsers(
     const orgId = crypto.randomUUID();
     orgs.push(orgId);
 
-    // Create org via PostgREST with service_role
     await supabaseFetch(`${opts.supabaseUrl}/rest/v1/organizations`, {
       method: "POST",
       apiKey: opts.serviceRoleKey,
@@ -90,18 +93,13 @@ export async function createTestUsers(
     const email = `e2e-user-${u}-${Date.now()}@test.local`;
     const password = `TestPass${u}!2026`;
 
-    // Create user via Auth Admin API
     const authRes = await supabaseFetch(
       `${opts.supabaseUrl}/auth/v1/admin/users`,
       {
         method: "POST",
         apiKey: opts.serviceRoleKey,
         headers: { Authorization: `Bearer ${opts.serviceRoleKey}` },
-        body: JSON.stringify({
-          email,
-          password,
-          email_confirm: true,
-        }),
+        body: JSON.stringify({ email, password, email_confirm: true }),
       }
     );
 
@@ -110,7 +108,6 @@ export async function createTestUsers(
     }
     const userId = (authRes.body as { id: string }).id;
 
-    // Create or update profile (may already exist from auth trigger)
     await supabaseFetch(`${opts.supabaseUrl}/rest/v1/profiles?on_conflict=id`, {
       method: "POST",
       apiKey: opts.serviceRoleKey,
@@ -118,14 +115,9 @@ export async function createTestUsers(
         Authorization: `Bearer ${opts.serviceRoleKey}`,
         Prefer: "resolution=merge-duplicates,return=minimal",
       },
-      body: JSON.stringify({
-        id: userId,
-        display_name: `E2E User ${u}`,
-        role: "member",
-      }),
+      body: JSON.stringify({ id: userId, display_name: `E2E User ${u}`, role: "member" }),
     });
 
-    // Add to org
     await supabaseFetch(`${opts.supabaseUrl}/rest/v1/organization_members`, {
       method: "POST",
       apiKey: opts.serviceRoleKey,
@@ -133,13 +125,9 @@ export async function createTestUsers(
         Authorization: `Bearer ${opts.serviceRoleKey}`,
         Prefer: "return=minimal",
       },
-      body: JSON.stringify({
-        organization_id: orgId,
-        user_id: userId,
-      }),
+      body: JSON.stringify({ organization_id: orgId, user_id: userId }),
     });
 
-    // Sign in to get JWT
     const loginRes = await supabaseFetch(
       `${opts.supabaseUrl}/auth/v1/token?grant_type=password`,
       {
@@ -160,13 +148,56 @@ export async function createTestUsers(
   return users;
 }
 
-async function userWorkload(
+interface WorkloadResults {
+  latencies: number[];
+  errors: number;
+  crossOrgLeaks: number;
+  crossOrgAttackBlocks: number;
+  crossOrgAttackAttempts: number;
+  ops: number;
+  errorDetails: string[];
+  opBreakdown: Record<string, { count: number; errors: number }>;
+}
+
+function trackOp(
+  results: WorkloadResults,
+  opName: string,
+  latency: number,
+  isError: boolean,
+  errorDetail?: string
+) {
+  results.latencies.push(latency);
+  results.ops++;
+  if (!results.opBreakdown[opName]) {
+    results.opBreakdown[opName] = { count: 0, errors: 0 };
+  }
+  results.opBreakdown[opName].count++;
+  if (isError) {
+    results.errors++;
+    results.opBreakdown[opName].errors++;
+    if (errorDetail) results.errorDetails.push(errorDetail);
+  }
+}
+
+async function extendedUserWorkload(
   user: ConcurrencyUser,
+  allUsers: ConcurrencyUser[],
   opts: HarnessOptions,
-  results: { latencies: number[]; errors: number; crossOrgLeaks: number; ops: number; errorDetails: string[] }
+  results: WorkloadResults,
+  deadline?: number,
 ): Promise<void> {
-  for (let i = 0; i < opts.opsPerUser; i++) {
-    // Op 1: Create a case via PostgREST
+  const otherOrgUsers = allUsers.filter(u => u.orgId !== user.orgId);
+  let iteration = 0;
+
+  const shouldContinue = () => {
+    if (deadline) return Date.now() < deadline;
+    return iteration < opts.opsPerUser;
+  };
+
+  while (shouldContinue()) {
+    iteration++;
+
+    // Op 1: Create case
     const caseId = crypto.randomUUID();
     const createRes = await supabaseFetch(`${opts.supabaseUrl}/rest/v1/cases`, {
       method: "POST",
@@ -177,21 +208,17 @@ async function userWorkload(
       },
       body: JSON.stringify({
         id: caseId,
-        title: `E2E Case ${i} by ${user.email}`,
+        title: `E2E Case ${iteration} by ${user.email}`,
         status: "진행중",
         organization_id: user.orgId,
         created_by: user.id,
         author_mode: "lawyer",
       }),
     });
-    results.latencies.push(createRes.latency);
-    results.ops++;
-    if (createRes.status >= 400) {
-      results.errors++;
-      results.errorDetails.push(`case_create: ${createRes.status} ${JSON.stringify(createRes.body)}`);
-    }
+    trackOp(results, "case_create", createRes.latency, createRes.status >= 400,
+      createRes.status >= 400 ? `case_create: ${createRes.status} ${JSON.stringify(createRes.body)}` : undefined);
 
-    // Op 2: List cases (RLS should filter to own org)
+    // Op 2: List cases (RLS check)
     const listRes = await supabaseFetch(
       `${opts.supabaseUrl}/rest/v1/cases?select=id,organization_id`,
       {
@@ -200,22 +227,72 @@ async function userWorkload(
         headers: { Authorization: `Bearer ${user.accessToken}` },
       }
     );
-    results.latencies.push(listRes.latency);
-    results.ops++;
-    if (listRes.status >= 400) {
-      results.errors++;
-      results.errorDetails.push(`case_list: ${listRes.status} ${JSON.stringify(listRes.body)}`);
-    } else {
+    trackOp(results, "case_list", listRes.latency, listRes.status >= 400,
+      listRes.status >= 400 ? `case_list: ${listRes.status}` : undefined);
+    if (listRes.status < 400) {
       const cases = listRes.body as Array<{ id: string; organization_id: string }>;
       for (const c of cases) {
-        if (c.organization_id !== user.orgId) {
-          results.crossOrgLeaks++;
-        }
+        if (c.organization_id !== user.orgId) results.crossOrgLeaks++;
       }
     }
 
-    // Op 3: Upload a small file to storage
-    const filePath = `${caseId}/e2e-test-${i}.txt`;
+    // Op 3: Search cases by title (ilike)
+    const searchRes = await supabaseFetch(
+      `${opts.supabaseUrl}/rest/v1/cases?title=ilike.*Case ${iteration}*&select=id,title`,
+      {
+        method: "GET",
+        apiKey: opts.anonKey,
+        headers: { Authorization: `Bearer ${user.accessToken}` },
+      }
+    );
+    trackOp(results, "case_search", searchRes.latency, searchRes.status >= 400,
+      searchRes.status >= 400 ? `case_search: ${searchRes.status}` : undefined);
+
+    // Op 4: Filter cases by status
+    const filterRes = await supabaseFetch(
+      `${opts.supabaseUrl}/rest/v1/cases?status=eq.진행중&select=id&limit=10`,
+      {
+        method: "GET",
+        apiKey: opts.anonKey,
+        headers: { Authorization: `Bearer ${user.accessToken}` },
+      }
+    );
+    trackOp(results, "case_filter", filterRes.latency, filterRes.status >= 400,
+      filterRes.status >= 400 ? `case_filter: ${filterRes.status}` : undefined);
+
+    // Op 5: Cursor pagination (offset-based via Range header)
+    const cursorRes = await supabaseFetch(
+      `${opts.supabaseUrl}/rest/v1/cases?select=id&order=created_at.desc&limit=5&offset=0`,
+      {
+        method: "GET",
+        apiKey: opts.anonKey,
+        headers: {
+          Authorization: `Bearer ${user.accessToken}`,
+          Prefer: "count=exact",
+        },
+      }
+    );
+    trackOp(results, "case_cursor", cursorRes.latency, cursorRes.status >= 400,
+      cursorRes.status >= 400 ? `case_cursor: ${cursorRes.status}` : undefined);
+
+    // Op 6: Update case title
+    const updateRes = await supabaseFetch(
+      `${opts.supabaseUrl}/rest/v1/cases?id=eq.${caseId}`,
+      {
+        method: "PATCH",
+        apiKey: opts.anonKey,
+        headers: {
+          Authorization: `Bearer ${user.accessToken}`,
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({ title: `Updated Case ${iteration}` }),
+      }
+    );
+    trackOp(results, "case_update", updateRes.latency, updateRes.status >= 400,
+      updateRes.status >= 400 ? `case_update: ${updateRes.status}` : undefined);
+
+    // Op 7: Upload storage file
+    const filePath = `${caseId}/e2e-test-${iteration}.txt`;
     const fileContent = `E2E test content from ${user.email} at ${new Date().toISOString()}`;
     const uploadRes = await supabaseFetch(
       `${opts.supabaseUrl}/storage/v1/object/case-files/${filePath}`,
@@ -229,14 +306,10 @@ async function userWorkload(
         body: fileContent,
       }
     );
-    results.latencies.push(uploadRes.latency);
-    results.ops++;
-    if (uploadRes.status >= 400) {
-      results.errors++;
-      results.errorDetails.push(`storage_upload: ${uploadRes.status} ${JSON.stringify(uploadRes.body)}`);
-    }
+    trackOp(results, "storage_upload", uploadRes.latency, uploadRes.status >= 400,
+      uploadRes.status >= 400 ? `storage_upload: ${uploadRes.status}` : undefined);
 
-    // Op 4: Read the uploaded file
+    // Op 8: Read storage file
     const readRes = await supabaseFetch(
       `${opts.supabaseUrl}/storage/v1/object/authenticated/case-files/${filePath}`,
       {
@@ -245,14 +318,11 @@ async function userWorkload(
         headers: { Authorization: `Bearer ${user.accessToken}` },
       }
     );
-    results.latencies.push(readRes.latency);
-    results.ops++;
-    if (readRes.status >= 400) {
-      results.errors++;
-      results.errorDetails.push(`storage_read: ${readRes.status} ${JSON.stringify(readRes.body)}`);
-    }
+    trackOp(results, "storage_read", readRes.latency, readRes.status >= 400,
+      readRes.status >= 400 ? `storage_read: ${readRes.status}` : undefined);
 
-    // Op 5: Create a round for the case
+    // Op 9: Create round (child record)
+    const roundId = crypto.randomUUID();
     const roundRes = await supabaseFetch(`${opts.supabaseUrl}/rest/v1/rounds`, {
       method: "POST",
       apiKey: opts.anonKey,
@@ -260,18 +330,88 @@ async function userWorkload(
         Authorization: `Bearer ${user.accessToken}`,
         Prefer: "return=minimal",
       },
-      body: JSON.stringify({
-        id: crypto.randomUUID(),
-        case_id: caseId,
-        kind: "소장",
-        seq: 1,
-      }),
+      body: JSON.stringify({ id: roundId, case_id: caseId, kind: "소장", seq: 1 }),
     });
-    results.latencies.push(roundRes.latency);
-    results.ops++;
-    if (roundRes.status >= 400) {
-      results.errors++;
-      results.errorDetails.push(`round_create: ${roundRes.status} ${JSON.stringify(roundRes.body)}`);
+    trackOp(results, "round_create", roundRes.latency, roundRes.status >= 400,
+      roundRes.status >= 400 ? `round_create: ${roundRes.status}` : undefined);
+
+    // Op 10: Read child records (rounds for this case)
+    const childRes = await supabaseFetch(
+      `${opts.supabaseUrl}/rest/v1/rounds?case_id=eq.${caseId}&select=id,kind,seq`,
+      {
+        method: "GET",
+        apiKey: opts.anonKey,
+        headers: { Authorization: `Bearer ${user.accessToken}` },
+      }
+    );
+    trackOp(results, "child_read", childRes.latency, childRes.status >= 400,
+      childRes.status >= 400 ? `child_read: ${childRes.status}` : undefined);
+
+    // Op 11: Q8 usage aggregation (sum cost_usd from runs via service_role RPC)
+    const q8Res = await supabaseFetch(
+      `${opts.supabaseUrl}/rest/v1/rpc/get_usage_totals`,
+      {
+        method: "POST",
+        apiKey: opts.serviceRoleKey,
+        headers: { Authorization: `Bearer ${opts.serviceRoleKey}` },
+        body: JSON.stringify({}),
+      }
+    );
+    trackOp(results, "q8_usage", q8Res.latency, q8Res.status >= 400 && q8Res.status !== 404,
+      q8Res.status >= 400 && q8Res.status !== 404 ? `q8_usage: ${q8Res.status}` : undefined);
+
+    // Op 12: Cross-org attack — try to read another org's cases
+    if (otherOrgUsers.length > 0) {
+      const victim = otherOrgUsers[iteration % otherOrgUsers.length];
+      results.crossOrgAttackAttempts++;
+      const attackRes = await supabaseFetch(
+        `${opts.supabaseUrl}/rest/v1/cases?organization_id=eq.${victim.orgId}&select=id`,
+        {
+          method: "GET",
+          apiKey: opts.anonKey,
+          headers: { Authorization: `Bearer ${user.accessToken}` },
+        }
+      );
+      trackOp(results, "cross_org_attack", attackRes.latency, false);
+      if (attackRes.status < 400) {
+        const leaked = attackRes.body as Array<{ id: string }>;
+        if (leaked.length > 0) {
+          results.crossOrgLeaks += leaked.length;
+        } else {
+          results.crossOrgAttackBlocks++;
+        }
+      } else {
+        results.crossOrgAttackBlocks++;
+      }
+    }
+
+    // Op 13: Cross-org attack — try to update another org's case
+    if (otherOrgUsers.length > 0) {
+      const victim = otherOrgUsers[iteration % otherOrgUsers.length];
+      results.crossOrgAttackAttempts++;
+      const attackUpdateRes = await supabaseFetch(
+        `${opts.supabaseUrl}/rest/v1/cases?organization_id=eq.${victim.orgId}`,
+        {
+          method: "PATCH",
+          apiKey: opts.anonKey,
+          headers: {
+            Authorization: `Bearer ${user.accessToken}`,
+            Prefer: "return=representation",
+          },
+          body: JSON.stringify({ title: "HACKED" }),
+        }
+      );
+      trackOp(results, "cross_org_attack_write", attackUpdateRes.latency, false);
+      if (attackUpdateRes.status < 400) {
+        const affected = attackUpdateRes.body as unknown[];
+        if (Array.isArray(affected) && affected.length > 0) {
+          results.crossOrgLeaks += affected.length;
+        } else {
+          results.crossOrgAttackBlocks++;
+        }
+      } else {
+        results.crossOrgAttackBlocks++;
+      }
     }
   }
 }
@@ -284,15 +424,23 @@ export async function runConcurrencyTest(
     latencies: [] as number[],
     errors: 0,
     crossOrgLeaks: 0,
+    crossOrgAttackBlocks: 0,
+    crossOrgAttackAttempts: 0,
     ops: 0,
     errorDetails: [] as string[],
+    opBreakdown: {} as Record<string, { count: number; errors: number }>,
   }));
+
+  const deadline = opts.durationMinutes
+    ? Date.now() + opts.durationMinutes * 60_000
+    : undefined;
 
   const start = performance.now();
 
-  // Run all users concurrently
   await Promise.all(
-    users.map((user, idx) => userWorkload(user, opts, allResults[idx]))
+    users.map((user, idx) =>
+      extendedUserWorkload(user, users, opts, allResults[idx], deadline)
+    )
   );
 
   const durationMs = performance.now() - start;
@@ -301,7 +449,18 @@ export async function runConcurrencyTest(
   const totalOps = allResults.reduce((s, r) => s + r.ops, 0);
   const failedOps = allResults.reduce((s, r) => s + r.errors, 0);
   const crossOrgLeaks = allResults.reduce((s, r) => s + r.crossOrgLeaks, 0);
+  const crossOrgAttackBlocks = allResults.reduce((s, r) => s + r.crossOrgAttackBlocks, 0);
+  const crossOrgAttackAttempts = allResults.reduce((s, r) => s + r.crossOrgAttackAttempts, 0);
   const errorDetails = allResults.flatMap((r) => r.errorDetails);
+
+  const opBreakdown: Record<string, { count: number; errors: number }> = {};
+  for (const r of allResults) {
+    for (const [name, stats] of Object.entries(r.opBreakdown)) {
+      if (!opBreakdown[name]) opBreakdown[name] = { count: 0, errors: 0 };
+      opBreakdown[name].count += stats.count;
+      opBreakdown[name].errors += stats.errors;
+    }
+  }
 
   allLatencies.sort((a, b) => a - b);
 
@@ -321,7 +480,10 @@ export async function runConcurrencyTest(
     durationMs,
     opsPerSecond: durationMs > 0 ? (totalOps / durationMs) * 1000 : 0,
     crossOrgLeaks,
+    crossOrgAttackBlocks,
+    crossOrgAttackAttempts,
     errorDetails,
+    opBreakdown,
   };
 }
 
@@ -332,7 +494,6 @@ export async function cleanupTestUsers(
   const orgIds = [...new Set(users.map((u) => u.orgId))];
 
   for (const user of users) {
-    // Delete user's cases and related data
     await supabaseFetch(
       `${opts.supabaseUrl}/rest/v1/rounds?case_id=in.(select id from cases where created_by=eq.${user.id})`,
       {
@@ -365,7 +526,6 @@ export async function cleanupTestUsers(
         headers: { Authorization: `Bearer ${opts.serviceRoleKey}` },
       }
     );
-    // Delete auth user
     await supabaseFetch(
       `${opts.supabaseUrl}/auth/v1/admin/users/${user.id}`,
       {
