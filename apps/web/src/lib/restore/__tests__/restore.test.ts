@@ -536,6 +536,7 @@ describe("Gate 7 Corrected: Cross-Stack Isolated Restore", { timeout: 120_000 },
 
   // ── R25: quoteTableName handles schema-qualified names ─────────
   it("R25: quoteTableName produces correct SQL for schema.table", async () => {
+    if (!targetAvailable) return;
     const { quoteTableName } = await import("../index") as any;
     if (typeof quoteTableName !== "function") {
       // quoteTableName is not exported — test via behavior: restore with storage works

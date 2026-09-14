@@ -138,7 +138,7 @@ describe("Gate 6: Organization Backup TDD", () => {
       const validIds = new Set(org1CaseIds.rows.map((r: { id: string }) => r.id));
 
       for (const f of result.manifest.files) {
-        const caseId = f.path.split("/")[0];
+        const caseId = f.storageObjectKey.split("/")[0];
         expect(validIds.has(caseId)).toBe(true);
       }
     } finally {
@@ -696,25 +696,26 @@ describe("Gate 6 Corrective: Storage Binary Backup", { timeout: 120_000 }, () =>
     }
   });
 
-  // ── T21: Storage download failure recorded, not thrown ──────────
-  it("T21: storage download failure recorded in manifest errors", async () => {
+  // ── T21: Storage download failure → entire backup fails (fail-closed) ──
+  it("T21: storage download failure throws and leaves no partial archive", async () => {
     const tmpDir = makeTmpDir();
     try {
       // Use a non-existent Storage API URL to force download failures
-      const result = await backup({
-        organizationId: STORAGE_TEST_ORG,
-        outputPath: tmpDir,
-        encryptionKey: TEST_KEY,
-        dbUrl: DB_URL,
-        storageApiUrl: "http://127.0.0.1:59999",
-        storageApiKey: SERVICE_KEY,
-      });
+      await expect(
+        backup({
+          organizationId: STORAGE_TEST_ORG,
+          outputPath: tmpDir,
+          encryptionKey: TEST_KEY,
+          dbUrl: DB_URL,
+          storageApiUrl: "http://127.0.0.1:59999",
+          storageApiKey: SERVICE_KEY,
+        })
+      ).rejects.toThrow(/storage.*download.*fail|failed to download/i);
 
-      // Should complete without throwing
-      expect(result.archivePath).toBeTruthy();
-      // Errors should be recorded for each file that failed to download
-      expect(result.manifest.storageFileErrors).toBeDefined();
-      expect(result.manifest.storageFileErrors!.length).toBeGreaterThanOrEqual(1);
+      // No partial archive should remain
+      const files = fs.readdirSync(tmpDir);
+      const archives = files.filter(f => f.endsWith(".enc"));
+      expect(archives).toHaveLength(0);
     } finally {
       cleanTmpDir(tmpDir);
     }
@@ -825,11 +826,11 @@ describe("Gate 6 Corrective: Storage Binary Backup", { timeout: 120_000 }, () =>
         storageApiKey: SERVICE_KEY,
       });
 
-      // Each file entry should have a contentChecksum when binary was downloaded
+      // Each file entry should have a contentSha256 when binary was downloaded
       for (const f of result.manifest.files) {
-        if (uploadedPaths.includes(f.path)) {
-          expect(f.contentChecksum).toBeDefined();
-          expect(f.contentChecksum).toMatch(/^[a-f0-9]{64}$/);
+        if (uploadedPaths.includes(f.storageObjectKey)) {
+          expect(f.contentSha256).toBeDefined();
+          expect(f.contentSha256).toMatch(/^[a-f0-9]{64}$/);
         }
       }
     } finally {
@@ -859,6 +860,328 @@ describe("Gate 6 Corrective: Storage Binary Backup", { timeout: 120_000 }, () =>
 
       const manifestStr = JSON.stringify(result.manifest);
       expect(manifestStr).not.toContain(SERVICE_KEY);
+    } finally {
+      cleanTmpDir(tmpDir);
+    }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Gate 6 Strict: Storage Fidelity + Fail-Closed + 81K Scale (T26-T32)
+// ═══════════════════════════════════════════════════════════════════
+
+const FIDELITY_ORG = "b0000000-0000-0000-0000-000000000060";
+
+describe("Gate 6 Strict: Storage Fidelity and Fail-Closed", { timeout: 120_000 }, () => {
+  let fidelityUser: StorageTestUser;
+  let fidelityCaseId: string;
+  const fidelityStorageKeys: string[] = [];
+  const fidelityContents: Map<string, Buffer> = new Map();
+  const fidelityDisplayNames: Map<string, string> = new Map();
+  const fTs = Date.now();
+
+  beforeAll(async () => {
+    const client = new pg.Client(DB_URL);
+    await client.connect();
+    try {
+      await client.query(
+        `INSERT INTO organizations (id, name, created_at) VALUES ($1, 'fidelity-test-org', now()) ON CONFLICT (id) DO NOTHING`,
+        [FIDELITY_ORG]
+      );
+      fidelityUser = await createStorageTestUser(`fidelity-${fTs}@test.local`, FIDELITY_ORG);
+      fidelityCaseId = crypto.randomUUID();
+      await client.query(
+        `INSERT INTO cases (id, organization_id, title, assignee, created_by, created_at) VALUES ($1, $2, 'fidelity-test-case', $3, $3, now())`,
+        [fidelityCaseId, FIDELITY_ORG, fidelityUser.id]
+      );
+
+      const pdfHeader = Buffer.from("%PDF-1.4 fake-pdf-content-for-testing\n".repeat(100));
+      const largeBuf = crypto.randomBytes(1024 * 1024 + 512); // >1MB
+
+      const files: { storageKey: string; displayName: string; kind: string; content: Buffer }[] = [
+        {
+          storageKey: `${fidelityCaseId}/${crypto.randomUUID()}.txt`,
+          displayName: "한글파일명_테스트.txt",
+          kind: "입력",
+          content: Buffer.from("한글 내용 테스트\n"),
+        },
+        {
+          storageKey: `${fidelityCaseId}/${crypto.randomUUID()}.txt`,
+          displayName: "file with spaces.txt",
+          kind: "입력",
+          content: Buffer.from("spaces in name\n"),
+        },
+        {
+          storageKey: `${fidelityCaseId}/${crypto.randomUUID()}.dat`,
+          displayName: "zero-byte.dat",
+          kind: "입력",
+          content: Buffer.alloc(0),
+        },
+        {
+          storageKey: `${fidelityCaseId}/${crypto.randomUUID()}.bin`,
+          displayName: "대용량_파일.bin",
+          kind: "입력",
+          content: largeBuf,
+        },
+        {
+          storageKey: `${fidelityCaseId}/${crypto.randomUUID()}.pdf`,
+          displayName: "소장_첨부문서.pdf",
+          kind: "서면",
+          content: pdfHeader,
+        },
+        {
+          storageKey: `${fidelityCaseId}/subdir/${crypto.randomUUID()}.txt`,
+          displayName: "보고서_하위폴더.txt",
+          kind: "리서치",
+          content: Buffer.from("same basename different path\n"),
+        },
+      ];
+
+      for (const f of files) {
+        const encodedKey = f.storageKey.split("/").map(s => encodeURIComponent(s)).join("/");
+        const res = await fetch(`${API_URL}/storage/v1/object/${BUCKET}/${encodedKey}`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${fidelityUser.accessToken}`,
+            apikey: ANON_KEY,
+            "Content-Type": "application/octet-stream",
+          },
+          body: f.content,
+        });
+        if (!res.ok) {
+          const txt = await res.text();
+          throw new Error(`Upload ${f.storageKey} failed: ${res.status} ${txt}`);
+        }
+        fidelityStorageKeys.push(f.storageKey);
+        fidelityContents.set(f.storageKey, f.content);
+        fidelityDisplayNames.set(f.storageKey, f.displayName);
+
+        const cfId = crypto.randomUUID();
+        await client.query(
+          `INSERT INTO case_files (id, case_id, kind, filename, storage_path, version, created_by_run, uploaded_by, created_at)
+           VALUES ($1, $2, $3, $4, $5, 1, NULL, $6, now())`,
+          [cfId, fidelityCaseId, f.kind, f.displayName, f.storageKey, fidelityUser.id]
+        );
+      }
+    } finally {
+      await client.end();
+    }
+  }, 60_000);
+
+  afterAll(async () => {
+    for (const key of fidelityStorageKeys) {
+      const encodedKey = key.split("/").map(s => encodeURIComponent(s)).join("/");
+      await fetch(`${API_URL}/storage/v1/object/${BUCKET}/${encodedKey}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+      });
+    }
+    const client = new pg.Client(DB_URL);
+    await client.connect();
+    try {
+      await client.query("DELETE FROM case_files WHERE case_id = $1", [fidelityCaseId]);
+      await client.query("DELETE FROM cases WHERE id = $1", [fidelityCaseId]);
+      await cleanupStorageTestUser(fidelityUser.id, FIDELITY_ORG);
+      await client.query("DELETE FROM organization_members WHERE organization_id = $1", [FIDELITY_ORG]);
+      await client.query("DELETE FROM organizations WHERE id = $1", [FIDELITY_ORG]);
+    } finally {
+      await client.end();
+    }
+  }, 30_000);
+
+  // ── T26: Korean display name preserved in manifest.files.originalDisplayName ──
+  it("T26: Korean display name preserved via case_files.filename → manifest originalDisplayName", async () => {
+    const tmpDir = makeTmpDir();
+    try {
+      const result = await backup({
+        organizationId: FIDELITY_ORG,
+        outputPath: tmpDir,
+        encryptionKey: TEST_KEY,
+        dbUrl: DB_URL,
+        storageApiUrl: API_URL,
+        storageApiKey: SERVICE_KEY,
+      });
+
+      const koreanKey = fidelityStorageKeys.find(k => fidelityDisplayNames.get(k)?.includes("한글"));
+      expect(koreanKey).toBeTruthy();
+
+      const entry = result.manifest.files.find(f => f.storageObjectKey === koreanKey);
+      expect(entry).toBeTruthy();
+      expect(entry!.originalDisplayName).toBe("한글파일명_테스트.txt");
+      expect(entry!.storageObjectKey).toMatch(/^[A-Za-z0-9\/_.-]+$/);
+
+      const { decrypt } = await import("../index");
+      const decrypted = decrypt(fs.readFileSync(result.archivePath), TEST_KEY);
+      const payload = JSON.parse(decrypted.toString("utf-8"));
+      const b64 = payload.storageFiles[koreanKey!];
+      expect(b64).toBeTruthy();
+      const restored = Buffer.from(b64, "base64");
+      expect(restored.toString("utf-8")).toContain("한글 내용 테스트");
+    } finally {
+      cleanTmpDir(tmpDir);
+    }
+  });
+
+  // ── T27: 1MB+ file backup preserves exact bytes ────────────────
+  it("T27: 1MB+ file backup preserves exact bytes", async () => {
+    const tmpDir = makeTmpDir();
+    try {
+      const result = await backup({
+        organizationId: FIDELITY_ORG,
+        outputPath: tmpDir,
+        encryptionKey: TEST_KEY,
+        dbUrl: DB_URL,
+        storageApiUrl: API_URL,
+        storageApiKey: SERVICE_KEY,
+      });
+
+      const { decrypt } = await import("../index");
+      const decrypted = decrypt(fs.readFileSync(result.archivePath), TEST_KEY);
+      const payload = JSON.parse(decrypted.toString("utf-8"));
+
+      const largeKey = fidelityStorageKeys.find(k => fidelityDisplayNames.get(k)?.includes("대용량"));
+      expect(largeKey).toBeTruthy();
+      const restored = Buffer.from(payload.storageFiles[largeKey!], "base64");
+      const original = fidelityContents.get(largeKey!)!;
+      expect(restored.length).toBe(original.length);
+      expect(sha256Buf(restored)).toBe(sha256Buf(original));
+
+      const entry = result.manifest.files.find(f => f.storageObjectKey === largeKey);
+      expect(entry!.byteLength).toBe(original.length);
+      expect(entry!.originalDisplayName).toBe("대용량_파일.bin");
+    } finally {
+      cleanTmpDir(tmpDir);
+    }
+  });
+
+  // ── T28: All metadata objects have corresponding binary ────────
+  it("T28: every storage.objects row has matching binary in archive", async () => {
+    const tmpDir = makeTmpDir();
+    try {
+      const result = await backup({
+        organizationId: FIDELITY_ORG,
+        outputPath: tmpDir,
+        encryptionKey: TEST_KEY,
+        dbUrl: DB_URL,
+        storageApiUrl: API_URL,
+        storageApiKey: SERVICE_KEY,
+      });
+
+      const { decrypt } = await import("../index");
+      const decrypted = decrypt(fs.readFileSync(result.archivePath), TEST_KEY);
+      const payload = JSON.parse(decrypted.toString("utf-8"));
+
+      const storageRows = payload.data.storage_objects as { name: string }[];
+      const storageKeys = Object.keys(payload.storageFiles || {});
+      expect(storageRows.length).toBeGreaterThan(0);
+      for (const row of storageRows) {
+        expect(storageKeys).toContain(row.name);
+      }
+    } finally {
+      cleanTmpDir(tmpDir);
+    }
+  });
+
+  // ── T29: PDF file round-trip with Korean display name ──────────
+  it("T29: PDF file backed up with correct hash and Korean display name", async () => {
+    const tmpDir = makeTmpDir();
+    try {
+      const result = await backup({
+        organizationId: FIDELITY_ORG,
+        outputPath: tmpDir,
+        encryptionKey: TEST_KEY,
+        dbUrl: DB_URL,
+        storageApiUrl: API_URL,
+        storageApiKey: SERVICE_KEY,
+      });
+
+      const { decrypt } = await import("../index");
+      const decrypted = decrypt(fs.readFileSync(result.archivePath), TEST_KEY);
+      const payload = JSON.parse(decrypted.toString("utf-8"));
+
+      const pdfKey = fidelityStorageKeys.find(k => k.endsWith(".pdf"));
+      expect(pdfKey).toBeTruthy();
+      const restored = Buffer.from(payload.storageFiles[pdfKey!], "base64");
+      expect(sha256Buf(restored)).toBe(sha256Buf(fidelityContents.get(pdfKey!)!));
+
+      const entry = result.manifest.files.find(f => f.storageObjectKey === pdfKey);
+      expect(entry!.originalDisplayName).toBe("소장_첨부문서.pdf");
+    } finally {
+      cleanTmpDir(tmpDir);
+    }
+  });
+
+  // ── T30: Same basename in different paths are distinct ─────────
+  it("T30: same basename in different paths stored distinctly", async () => {
+    const tmpDir = makeTmpDir();
+    try {
+      const result = await backup({
+        organizationId: FIDELITY_ORG,
+        outputPath: tmpDir,
+        encryptionKey: TEST_KEY,
+        dbUrl: DB_URL,
+        storageApiUrl: API_URL,
+        storageApiKey: SERVICE_KEY,
+      });
+
+      const { decrypt } = await import("../index");
+      const decrypted = decrypt(fs.readFileSync(result.archivePath), TEST_KEY);
+      const payload = JSON.parse(decrypted.toString("utf-8"));
+
+      const subdirKey = fidelityStorageKeys.find(k => k.includes("subdir/"));
+      expect(subdirKey).toBeTruthy();
+      expect(payload.storageFiles[subdirKey!]).toBeTruthy();
+
+      const entry = result.manifest.files.find(f => f.storageObjectKey === subdirKey);
+      expect(entry!.originalDisplayName).toBe("보고서_하위폴더.txt");
+    } finally {
+      cleanTmpDir(tmpDir);
+    }
+  });
+
+  // ── T31: Filename with spaces backup round-trip ────────────────
+  it("T31: filename with spaces backed up correctly", async () => {
+    const tmpDir = makeTmpDir();
+    try {
+      const result = await backup({
+        organizationId: FIDELITY_ORG,
+        outputPath: tmpDir,
+        encryptionKey: TEST_KEY,
+        dbUrl: DB_URL,
+        storageApiUrl: API_URL,
+        storageApiKey: SERVICE_KEY,
+      });
+
+      const { decrypt } = await import("../index");
+      const decrypted = decrypt(fs.readFileSync(result.archivePath), TEST_KEY);
+      const payload = JSON.parse(decrypted.toString("utf-8"));
+
+      const spaceKey = fidelityStorageKeys.find(k => fidelityDisplayNames.get(k) === "file with spaces.txt");
+      expect(spaceKey).toBeTruthy();
+      const restored = Buffer.from(payload.storageFiles[spaceKey!], "base64");
+      expect(restored.toString("utf-8")).toBe("spaces in name\n");
+    } finally {
+      cleanTmpDir(tmpDir);
+    }
+  });
+
+  // ── T32: Binary download failure → entire backup fails ─────────
+  it("T32: single binary download failure causes total backup failure, no partial archive", async () => {
+    const tmpDir = makeTmpDir();
+    try {
+      await expect(
+        backup({
+          organizationId: FIDELITY_ORG,
+          outputPath: tmpDir,
+          encryptionKey: TEST_KEY,
+          dbUrl: DB_URL,
+          storageApiUrl: "http://127.0.0.1:59999",
+          storageApiKey: SERVICE_KEY,
+        })
+      ).rejects.toThrow(/storage.*download.*fail|failed to download/i);
+
+      const files = fs.readdirSync(tmpDir);
+      expect(files.filter(f => f.endsWith(".enc"))).toHaveLength(0);
     } finally {
       cleanTmpDir(tmpDir);
     }

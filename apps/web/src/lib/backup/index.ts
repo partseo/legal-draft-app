@@ -17,11 +17,17 @@ export interface BackupManifest {
   organizationId: string;
   createdAt: string;
   tables: Record<string, { rowCount: number; checksum: string }>;
-  files: { path: string; checksum: string; contentChecksum?: string }[];
+  files: {
+    storageObjectKey: string;
+    originalDisplayName?: string;
+    contentType?: string;
+    byteLength?: number;
+    contentSha256?: string;
+    checksum: string;
+  }[];
   encrypted: boolean;
   storageFilesIncluded?: boolean;
   storageFilesTotalBytes?: number;
-  storageFileErrors?: { path: string; error: string }[];
 }
 
 export interface BackupResult {
@@ -113,7 +119,8 @@ async function downloadStorageFile(
   objectName: string
 ): Promise<{ data: Buffer | null; error: string | null }> {
   try {
-    const url = `${apiUrl}/storage/v1/object/authenticated/${bucket}/${objectName}`;
+    const encodedName = objectName.split("/").map(s => encodeURIComponent(s)).join("/");
+    const url = `${apiUrl}/storage/v1/object/authenticated/${bucket}/${encodedName}`;
     const res = await fetch(url, {
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -178,14 +185,21 @@ export async function backup(options: BackupOptions): Promise<BackupResult> {
 
     const storageObjects = tableData.storage_objects as Array<{ name: string; bucket_id: string }>;
     const storageFileEntries: BackupManifest["files"] = [];
-    const storageFileErrors: { path: string; error: string }[] = [];
     const storageFilesMap: Record<string, string> = {};
     let storageFilesTotalBytes = 0;
     const shouldDownloadBinaries = !!(storageApiUrl && storageApiKey && storageObjects.length > 0);
 
+    const caseFiles = tableData.case_files as Array<{ filename: string; storage_path: string; kind: string }>;
+    const displayNameByKey = new Map<string, { filename: string; kind: string }>();
+    for (const cf of caseFiles) {
+      displayNameByKey.set(cf.storage_path, { filename: cf.filename, kind: cf.kind });
+    }
+
     for (const obj of storageObjects) {
-      const entry: { path: string; checksum: string; contentChecksum?: string } = {
-        path: obj.name,
+      const cfInfo = displayNameByKey.get(obj.name) ?? displayNameByKey.get(`case-files/${obj.name}`);
+      const entry: BackupManifest["files"][number] = {
+        storageObjectKey: obj.name,
+        originalDisplayName: cfInfo?.filename,
         checksum: sha256(JSON.stringify(obj)),
       };
 
@@ -199,10 +213,11 @@ export async function backup(options: BackupOptions): Promise<BackupResult> {
         if (data !== null) {
           const b64 = data.toString("base64");
           storageFilesMap[obj.name] = b64;
-          entry.contentChecksum = sha256(data);
+          entry.contentSha256 = sha256(data);
+          entry.byteLength = data.length;
           storageFilesTotalBytes += data.length;
         } else {
-          storageFileErrors.push({ path: obj.name, error: error! });
+          throw new Error(`Failed to download storage file "${obj.name}": ${error}`);
         }
       }
 
@@ -221,9 +236,6 @@ export async function backup(options: BackupOptions): Promise<BackupResult> {
     if (shouldDownloadBinaries) {
       manifest.storageFilesIncluded = true;
       manifest.storageFilesTotalBytes = storageFilesTotalBytes;
-      if (storageFileErrors.length > 0) {
-        manifest.storageFileErrors = storageFileErrors;
-      }
     }
 
     const payloadObj: Record<string, unknown> = { manifest, data: tableData };
