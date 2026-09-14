@@ -54,17 +54,23 @@ async function supabaseFetch(
   };
 
   const start = performance.now();
-  const res = await fetch(url, { ...opts, headers });
-  const latency = performance.now() - start;
+  try {
+    const res = await fetch(url, { ...opts, headers });
+    const latency = performance.now() - start;
 
-  let body: unknown;
-  const ct = res.headers.get("content-type") ?? "";
-  if (ct.includes("json")) {
-    body = await res.json();
-  } else {
-    body = await res.text();
+    let body: unknown;
+    const ct = res.headers.get("content-type") ?? "";
+    if (ct.includes("json")) {
+      body = await res.json();
+    } else {
+      body = await res.text();
+    }
+    return { status: res.status, body, latency };
+  } catch (err: unknown) {
+    const latency = performance.now() - start;
+    const msg = err instanceof Error ? err.message : String(err);
+    return { status: 599, body: `network_error: ${msg}`, latency };
   }
-  return { status: res.status, body, latency };
 }
 
 export async function createTestUsers(
