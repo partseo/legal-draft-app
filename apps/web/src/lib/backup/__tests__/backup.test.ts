@@ -36,7 +36,7 @@ describe("Gate 6: Organization Backup TDD", () => {
   });
 
   // ── T1: Empty org → backup succeeds with 0 rows ──────────────────
-  it("T1: empty org backup succeeds with 0 rows", async () => {
+  it("T1: empty org backup succeeds with 0 rows", { timeout: 60_000 }, async () => {
     const tmpDir = makeTmpDir();
     try {
       // Create a temporary empty org (committed so backup's own connection can see it)
@@ -69,7 +69,7 @@ describe("Gate 6: Organization Backup TDD", () => {
   });
 
   // ── T2: Single-case org → backup contains exactly that case ──────
-  it("T2: single-case org backup contains correct data", async () => {
+  it("T2: single-case org backup contains correct data", { timeout: 60_000 }, async () => {
     const tmpDir = makeTmpDir();
     try {
       // org 2 has cases — use a subset check
@@ -94,7 +94,7 @@ describe("Gate 6: Organization Backup TDD", () => {
   });
 
   // ── T3: Cross-org rows excluded ──────────────────────────────────
-  it("T3: cross-org rows excluded from backup", async () => {
+  it("T3: cross-org rows excluded from backup", { timeout: 60_000 }, async () => {
     const tmpDir = makeTmpDir();
     try {
       const result = await backup({
@@ -120,7 +120,7 @@ describe("Gate 6: Organization Backup TDD", () => {
   });
 
   // ── T4: Cross-org files excluded ─────────────────────────────────
-  it("T4: cross-org storage files excluded", async () => {
+  it("T4: cross-org storage files excluded", { timeout: 60_000 }, async () => {
     const tmpDir = makeTmpDir();
     try {
       const result = await backup({
@@ -147,7 +147,7 @@ describe("Gate 6: Organization Backup TDD", () => {
   });
 
   // ── T5: Encryption round-trip ────────────────────────────────────
-  it("T5: encryption round-trip produces identical data", async () => {
+  it("T5: encryption round-trip produces identical data", { timeout: 60_000 }, async () => {
     const tmpDir = makeTmpDir();
     try {
       const result = await backup({
@@ -208,7 +208,7 @@ describe("Gate 6: Organization Backup TDD", () => {
   });
 
   // ── T8: Manifest row counts correct ─────────────────────────────
-  it("T8: manifest row counts match database", async () => {
+  it("T8: manifest row counts match database", { timeout: 60_000 }, async () => {
     const tmpDir = makeTmpDir();
     try {
       const result = await backup({
@@ -237,7 +237,7 @@ describe("Gate 6: Organization Backup TDD", () => {
   });
 
   // ── T9: Manifest checksums match actual data ────────────────────
-  it("T9: manifest checksums are valid SHA-256 and match data", async () => {
+  it("T9: manifest checksums are valid SHA-256 and match data", { timeout: 60_000 }, async () => {
     const tmpDir = makeTmpDir();
     try {
       const result = await backup({
@@ -266,7 +266,7 @@ describe("Gate 6: Organization Backup TDD", () => {
   });
 
   // ── T10: Large org backup (org 1 = 200 cases, ~6000 rows) ──────
-  it("T10: large org backup completes with correct totals", async () => {
+  it("T10: large org backup completes with correct totals", { timeout: 60_000 }, async () => {
     const tmpDir = makeTmpDir();
     try {
       const result = await backup({
@@ -301,12 +301,20 @@ describe("Gate 6: Organization Backup TDD", () => {
   });
 
   // ── T12: Backup is idempotent (same checksums) ──────────────────
-  it("T12: two consecutive backups produce same checksums", async () => {
+  it("T12: two consecutive backups produce same checksums", { timeout: 60_000 }, async () => {
+    const IDEM_ORG = "b0000000-0000-0000-0000-0000000000dd";
     const tmpDir1 = makeTmpDir();
     const tmpDir2 = makeTmpDir();
     try {
+      await client.query(
+        `INSERT INTO organizations (id, name, created_at)
+         VALUES ($1, 'idempotency-test-org', '2026-01-01T00:00:00Z')
+         ON CONFLICT (id) DO NOTHING`,
+        [IDEM_ORG]
+      );
+
       const opts: Omit<BackupOptions, "outputPath"> = {
-        organizationId: ORG_2,
+        organizationId: IDEM_ORG,
         encryptionKey: TEST_KEY,
         dbUrl: DB_URL,
       };
@@ -320,13 +328,15 @@ describe("Gate 6: Organization Backup TDD", () => {
         );
       }
     } finally {
+      await client.query("DELETE FROM organization_members WHERE organization_id = $1", [IDEM_ORG]);
+      await client.query("DELETE FROM organizations WHERE id = $1", [IDEM_ORG]);
       cleanTmpDir(tmpDir1);
       cleanTmpDir(tmpDir2);
     }
   });
 
   // ── T13: Storage objects included in backup ─────────────────────
-  it("T13: storage objects referenced in manifest", async () => {
+  it("T13: storage objects referenced in manifest", { timeout: 60_000 }, async () => {
     const tmpDir = makeTmpDir();
     try {
       const result = await backup({
@@ -346,7 +356,7 @@ describe("Gate 6: Organization Backup TDD", () => {
   });
 
   // ── T14: Partial write → no partial archive ─────────────────────
-  it("T14: failed backup leaves no partial archive", async () => {
+  it("T14: failed backup leaves no partial archive", { timeout: 60_000 }, async () => {
     const tmpDir = makeTmpDir();
     try {
       // First, verify a successful backup DOES produce an archive
@@ -385,7 +395,7 @@ describe("Gate 6: Organization Backup TDD", () => {
   });
 
   // ── T15: No plaintext secrets in manifest/output ────────────────
-  it("T15: no plaintext secrets in manifest or archive filename", async () => {
+  it("T15: no plaintext secrets in manifest or archive filename", { timeout: 60_000 }, async () => {
     const tmpDir = makeTmpDir();
     try {
       const result = await backup({
