@@ -22,6 +22,7 @@ function runCheckProjection(
     const stdout = execFileSync("python", [CHECK_PROJECTION_PATH, docType, tmpFile], {
       encoding: "utf-8",
       timeout: 10000,
+      env: { ...process.env, PYTHONIOENCODING: "utf-8" },
     });
     return { exitCode: 0, stdout, stderr: "" };
   } catch (err: unknown) {
@@ -122,5 +123,82 @@ describe("D-04: check_projection 개인·법인 피고 분기", () => {
 
     expect(resultWithout.exitCode).toBe(0);
     expect(resultWithout.stdout).toContain("OK");
+  });
+});
+
+describe("D-04 STEP1: 명시적 피고_유형 계약", () => {
+  it("피고_유형=개인 명시 → 피고_대표자 null 허용", () => {
+    const ctx = makeBaseContext({
+      피고_유형: "개인",
+      피고_대표자: null,
+    });
+
+    const result = runCheckProjection("소장", ctx);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("OK");
+  });
+
+  it("피고_유형=법인 명시 → 피고_대표자 필수", () => {
+    const ctx = makeBaseContext({
+      피고_명칭: "삼성전자",
+      피고_유형: "법인",
+      피고_대표자: "대표이사 한종희",
+    });
+
+    const result = runCheckProjection("소장", ctx);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("OK");
+  });
+
+  it("피고_유형=법인 명시 + 피고_대표자 없음 → FAIL", () => {
+    const ctx = makeBaseContext({
+      피고_명칭: "삼성전자",
+      피고_유형: "법인",
+    });
+    delete (ctx as Record<string, unknown>)["피고_대표자"];
+
+    const result = runCheckProjection("소장", ctx);
+
+    expect(result.exitCode).not.toBe(0);
+  });
+
+  it("피고_유형 미지정 + 법인 마커 없는 명칭 → HUMAN_REVIEW_REQUIRED 경고", () => {
+    const ctx = makeBaseContext({
+      피고_명칭: "삼성전자",
+    });
+    delete (ctx as Record<string, unknown>)["피고_대표자"];
+    delete (ctx as Record<string, unknown>)["피고_유형"];
+
+    const result = runCheckProjection("소장", ctx);
+
+    expect(result.stdout).toContain("HUMAN_REVIEW_REQUIRED");
+  });
+
+  it("피고_유형 미지정 + 법인 마커 있음 → 기존 호환 (법인 추정 + 경고)", () => {
+    const ctx = makeBaseContext({
+      피고_명칭: "주식회사 테스트",
+      피고_대표자: "대표이사 박대표",
+    });
+    delete (ctx as Record<string, unknown>)["피고_유형"];
+
+    const result = runCheckProjection("소장", ctx);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("OK");
+  });
+
+  it("피고_유형=개인 명시 시 법인 마커 명칭도 개인으로 처리", () => {
+    const ctx = makeBaseContext({
+      피고_명칭: "주식회사이영수",
+      피고_유형: "개인",
+    });
+    delete (ctx as Record<string, unknown>)["피고_대표자"];
+
+    const result = runCheckProjection("소장", ctx);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("OK");
   });
 });

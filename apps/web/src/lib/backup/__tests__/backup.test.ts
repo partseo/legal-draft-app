@@ -286,7 +286,7 @@ describe("Gate 6: Organization Backup TDD", () => {
     } finally {
       cleanTmpDir(tmpDir);
     }
-  }, 30_000);
+  });
 
   // ── T11: Output directory must exist ─────────────────────────────
   it("T11: nonexistent output directory throws error", async () => {
