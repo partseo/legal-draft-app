@@ -418,12 +418,16 @@ describe("Organization RLS Integration Tests", () => {
   // ── H: Service role bypass ──
 
   describe("H: Service role sees all data", () => {
-    it("H1: service_role can see all 10K cases for 81K corpus org", async () => {
+    it("H1: service_role can read all cases belonging to a seeded organization", async () => {
       await asServiceRole(client);
-      const r = await client.query(
-        "SELECT count(*)::int as cnt FROM cases WHERE organization_id = 'a0000000-0000-0000-0000-000000081000'"
+      const orgCases = await client.query(
+        "SELECT count(*)::int as cnt FROM cases WHERE organization_id = 'b0000000-0000-0000-0000-000000000001'"
       );
-      expect(r.rows[0].cnt).toBe(10000);
+      expect(orgCases.rows[0].cnt).toBe(200);
+      const allCases = await client.query(
+        "SELECT count(*)::int as cnt FROM cases WHERE organization_id::text LIKE 'b0000000-0000-0000-0000-%'"
+      );
+      expect(allCases.rows[0].cnt).toBe(10000);
     });
 
     it("H2: service_role can see all seed organizations", async () => {
