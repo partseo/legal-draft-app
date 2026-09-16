@@ -231,13 +231,9 @@ describe("Document Type Registry", () => {
     expect(registry.getVerifySkill("등기신청서_소유권이전")).toBe("check-registration");
   });
 
-  it("isExistingWebDocumentType이 소장·준비서면에 대해 true다", () => {
-    expect(registry.isExistingWebDocumentType("소장")).toBe(true);
-    expect(registry.isExistingWebDocumentType("준비서면")).toBe(true);
-  });
-
-  it("isExistingWebDocumentType이 아직 미지원 유형에 대해 false다", () => {
-    expect(registry.isExistingWebDocumentType("내용증명")).toBe(false);
-    expect(registry.isExistingWebDocumentType("가압류신청서")).toBe(false);
+  it("isExistingWebDocumentType이 전체 11종에 대해 true다", () => {
+    for (const t of registry.listDocumentTypes()) {
+      expect(registry.isExistingWebDocumentType(t.id)).toBe(true);
+    }
   });
 });

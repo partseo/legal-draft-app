@@ -43,13 +43,12 @@ describe("P5.5-5C: Document Type Selection", () => {
       expect(selectableIds).toEqual(dbKinds);
     });
 
-    it("does NOT filter by existingWebSupport", () => {
+    it("all selectable types have existingWebSupport", () => {
       const types = getSelectableDocumentTypes();
-      const nonWebTypes = types.filter((t) => {
+      for (const t of types) {
         const full = getDocumentType(t.id);
-        return full && !full.existingWebSupport;
-      });
-      expect(nonWebTypes.length).toBeGreaterThan(0);
+        expect(full?.existingWebSupport).toBe(true);
+      }
     });
   });
 

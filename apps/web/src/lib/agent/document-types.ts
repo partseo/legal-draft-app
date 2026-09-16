@@ -93,7 +93,7 @@ const DOCUMENT_TYPES: readonly DocumentTypeDefinition[] = [
     ],
     stagePolicy: { intake: "required", research: "optional", draft: "required", verify: "conditional" },
     supportedAuthorModes: BOTH_MODES,
-    existingWebSupport: false,
+    existingWebSupport: true,
   },
   {
     id: "가압류신청서",
@@ -106,7 +106,7 @@ const DOCUMENT_TYPES: readonly DocumentTypeDefinition[] = [
     ],
     stagePolicy: { intake: "required", research: "required", draft: "required", verify: "required" },
     supportedAuthorModes: BOTH_MODES,
-    existingWebSupport: false,
+    existingWebSupport: true,
   },
   {
     id: "가처분신청서",
@@ -119,7 +119,7 @@ const DOCUMENT_TYPES: readonly DocumentTypeDefinition[] = [
     ],
     stagePolicy: { intake: "required", research: "required", draft: "required", verify: "required" },
     supportedAuthorModes: BOTH_MODES,
-    existingWebSupport: false,
+    existingWebSupport: true,
   },
   {
     id: "강제집행신청서",
@@ -132,7 +132,7 @@ const DOCUMENT_TYPES: readonly DocumentTypeDefinition[] = [
     ],
     stagePolicy: { intake: "required", research: "skipped", draft: "required", verify: "conditional" },
     supportedAuthorModes: BOTH_MODES,
-    existingWebSupport: false,
+    existingWebSupport: true,
   },
   {
     id: "등기신청서_소유권이전",
@@ -145,7 +145,7 @@ const DOCUMENT_TYPES: readonly DocumentTypeDefinition[] = [
     ],
     stagePolicy: { intake: "required", research: "optional", draft: "required", verify: "required" },
     supportedAuthorModes: BOTH_MODES,
-    existingWebSupport: false,
+    existingWebSupport: true,
   },
   {
     id: "등기신청서_근저당설정",
@@ -158,7 +158,7 @@ const DOCUMENT_TYPES: readonly DocumentTypeDefinition[] = [
     ],
     stagePolicy: { intake: "required", research: "optional", draft: "required", verify: "required" },
     supportedAuthorModes: BOTH_MODES,
-    existingWebSupport: false,
+    existingWebSupport: true,
   },
   {
     id: "등기신청서_법인변경",
@@ -171,7 +171,7 @@ const DOCUMENT_TYPES: readonly DocumentTypeDefinition[] = [
     ],
     stagePolicy: { intake: "required", research: "optional", draft: "required", verify: "required" },
     supportedAuthorModes: BOTH_MODES,
-    existingWebSupport: false,
+    existingWebSupport: true,
   },
   {
     id: "개인회생신청서",
@@ -188,7 +188,7 @@ const DOCUMENT_TYPES: readonly DocumentTypeDefinition[] = [
     ],
     stagePolicy: { intake: "required", research: "optional", draft: "required", verify: "required" },
     supportedAuthorModes: BOTH_MODES,
-    existingWebSupport: false,
+    existingWebSupport: true,
   },
   {
     id: "파산면책신청서",
@@ -203,7 +203,7 @@ const DOCUMENT_TYPES: readonly DocumentTypeDefinition[] = [
     ],
     stagePolicy: { intake: "required", research: "optional", draft: "required", verify: "required" },
     supportedAuthorModes: BOTH_MODES,
-    existingWebSupport: false,
+    existingWebSupport: true,
   },
 ] as const;
 
