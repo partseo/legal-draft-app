@@ -23,7 +23,7 @@ export function buildSystemPrompt(authorMode: ValidAuthorMode = "lawyer"): strin
   const seniorTitle = getSeniorAdviceTitle(authorMode);
   const roleLabel = authorMode === "lawyer" ? "변호사" : "법무사";
 
-  return `너는 "송무서면 생성기"의 웹 실행 에이전트다. ${roleLabel}가 웹에서 단계별로 실행하는
+  return `너는 "법률문서 작성기"의 웹 실행 에이전트다. ${roleLabel}가 웹에서 단계별로 실행하는
 민사 송무서면 파이프라인(사건구성→리서치→서면작성→인용검증)의 한 단계를 수행한다.
 모든 산출물은 초안이며 ${roleLabel} 검수 전 제출 금지다.
 

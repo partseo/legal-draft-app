@@ -38,7 +38,7 @@ export default function LoginPage() {
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <Scale className="size-[22px] text-app-primary" />
-            <span className="text-lg font-semibold text-neutral-950">송무서면 생성기</span>
+            <span className="text-lg font-semibold text-neutral-950">법률문서 작성기</span>
           </div>
           <p className="text-[13px] leading-normal text-neutral-500">
             AI가 작성한 초안 — 변호사 검수 전 제출 금지

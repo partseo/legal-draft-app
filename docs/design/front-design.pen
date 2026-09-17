@@ -4188,7 +4188,7 @@
               "id": "qybUg",
               "name": "LogoText",
               "fill": "#0a0a0a",
-              "content": "송무서면 생성기",
+              "content": "법률문서 작성기",
               "fontFamily": "$app-font",
               "fontSize": 15,
               "fontWeight": "600"
@@ -4436,7 +4436,7 @@
                           "id": "IQ74b",
                           "name": "LogoText",
                           "fill": "#0a0a0a",
-                          "content": "송무서면 생성기",
+                          "content": "법률문서 작성기",
                           "fontFamily": "$app-font",
                           "fontSize": 18,
                           "fontWeight": "600"

@@ -16,7 +16,7 @@ export function AppSidebar({ userName, userRole }: { userName: string; userRole:
     <aside className="flex w-60 shrink-0 flex-col gap-1.5 border-r border-neutral-200 bg-white px-4 py-5">
       <div className="flex items-center gap-2 p-2">
         <Scale className="size-[22px] text-app-primary" />
-        <span className="text-[15px] font-semibold text-neutral-950">송무서면 생성기</span>
+        <span className="text-[15px] font-semibold text-neutral-950">법률문서 작성기</span>
       </div>
       <nav className="flex flex-col gap-1 pt-4">
         {NAV.map(({ href, label, icon: Icon, match }) => {

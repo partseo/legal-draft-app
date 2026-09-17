@@ -9,7 +9,7 @@ function authUnavailableResponse(rawDetail: string): NextResponse {
   const detail = rawDetail.replace(/[^\w .:·-]/g, "").slice(0, 120);
   const body = `<!doctype html><html lang="ko"><head><meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>인증 서버 연결 불가 — 송무서면 생성기</title>
+<title>인증 서버 연결 불가 — 법률문서 작성기</title>
 <style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f7f7f8;
 font-family:system-ui,"Segoe UI",sans-serif;color:#0a0a0a}main{max-width:34rem;padding:2.5rem;background:#fff;
 border:1px solid #e5e5e5;border-radius:.75rem}h1{margin:0 0 .75rem;font-size:1.125rem}p{margin:0 0 .5rem;

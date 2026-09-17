@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "송무서면 생성기",
+  title: "법률문서 작성기",
   description: "AI 초안 — 변호사 검수 전 제출 금지",
 };
 

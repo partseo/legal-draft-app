@@ -1,4 +1,4 @@
--- 송무서면 생성기 초기 스키마 (스펙 §4)
+-- 법률문서 작성기 초기 스키마 (스펙 §4)
 -- 단일 팀 인스턴스: 모든 authenticated 사용자가 팀원이다.
 
 create type user_role as enum ('admin', 'member');
